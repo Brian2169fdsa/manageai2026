@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
 import { TicketWizardStep1 } from '@/components/portal/TicketWizardStep1';
 import { TicketWizardStep2 } from '@/components/portal/TicketWizardStep2';
@@ -30,8 +31,20 @@ const defaultStep2: WizardStep2Data = {
 };
 
 export default function NewTicketPage() {
+  const searchParams = useSearchParams();
   const [step, setStep] = useState(1);
-  const [step1, setStep1] = useState<WizardStep1Data>(defaultStep1);
+  const [step1, setStep1] = useState<WizardStep1Data>(() => {
+    const platform = searchParams.get('platform') as WizardStep1Data['ticket_type'] | null;
+    const what = searchParams.get('what_to_build');
+    const project = searchParams.get('project_name');
+    if (!platform && !what && !project) return defaultStep1;
+    return {
+      ...defaultStep1,
+      ...(platform && { ticket_type: platform }),
+      ...(what && { what_to_build: what }),
+      ...(project && { project_name: project }),
+    };
+  });
   const [step2, setStep2] = useState<WizardStep2Data>(defaultStep2);
 
   const [ticketId, setTicketId] = useState<string | null>(null);

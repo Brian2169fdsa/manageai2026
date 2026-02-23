@@ -53,6 +53,7 @@ const artifactDefs = [
 ] as const;
 
 export function TicketWizardStep3({
+  ticketId,
   summary,
   understanding,
   questions,
@@ -348,9 +349,9 @@ export function TicketWizardStep3({
         </Button>
         <Button
           className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-          onClick={() => router.push('/dashboard')}
+          onClick={() => router.push(`/dashboard/tickets/${ticketId}`)}
         >
-          Go to Dashboard <ChevronRight size={15} />
+          View AI Build Results <ChevronRight size={15} />
         </Button>
       </div>
     </div>

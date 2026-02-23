@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 
-// Allow up to 5 minutes — 3 parallel Claude calls generating large HTML files
+// Allow up to 5 minutes — parallel Claude calls + optional MCP lookup
 export const maxDuration = 300;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -30,6 +30,117 @@ async function uploadToStorage(
     throw new Error(`Storage upload failed for ${path}: ${error.message}`);
   }
   console.log(`[generate-build] Uploaded ${path} successfully`);
+}
+
+// ── n8n-MCP Integration ───────────────────────────────────────────────────────
+//
+// Uses https://github.com/czlonkowski/n8n-mcp — a local MCP server with
+// 1,084 n8n node definitions. Spawned as a subprocess via stdio transport.
+// Falls back to Claude-only generation if the server is unavailable.
+
+async function getN8nNodeContext(description: string): Promise<string> {
+  const CONNECT_TIMEOUT_MS = 15000;
+  const TOOL_TIMEOUT_MS = 20000;
+
+  try {
+    console.log('[n8n-mcp] Attempting to connect to n8n-MCP server...');
+
+    // Dynamic require — avoids static import failures if package structure changes
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Client } = require('@modelcontextprotocol/sdk/client') as {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Client: new (info: object, opts: object) => any;
+    };
+
+    const clientIndexPath = require.resolve('@modelcontextprotocol/sdk/client') as string;
+    const stdioPath = clientIndexPath.replace(/index\.js$/, 'stdio.js');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { StdioClientTransport } = require(stdioPath) as {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      StdioClientTransport: new (opts: object) => any;
+    };
+
+    const serverPath = require.resolve('n8n-mcp');
+    console.log('[n8n-mcp] Server path:', serverPath);
+
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [serverPath],
+      env: { ...process.env },
+    });
+
+    const client = new Client(
+      { name: 'manageai-generate-build', version: '1.0.0' },
+      { capabilities: {} }
+    );
+
+    // Connect with timeout
+    await Promise.race([
+      client.connect(transport),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('n8n-MCP connect timeout after 15s')), CONNECT_TIMEOUT_MS)
+      ),
+    ]);
+    console.log('[n8n-mcp] Connected successfully');
+
+    // Discover available tools
+    const toolsResult = await client.listTools();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toolNames: string[] = toolsResult.tools.map((t: any) => t.name);
+    console.log('[n8n-mcp] Available tools:', toolNames);
+
+    let nodeContext = '';
+
+    // ── Search for relevant nodes ───────────────────────────────────────────
+    const searchToolName = toolNames.find(
+      (n) => n === 'search_nodes' || n === 'get_node_for_task' || n.includes('search')
+    );
+
+    if (searchToolName) {
+      const query = description.slice(0, 500);
+      console.log(`[n8n-mcp] Calling ${searchToolName}...`);
+
+      const searchResult = await Promise.race([
+        client.callTool({
+          name: searchToolName,
+          arguments: { query, limit: 12 },
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('n8n-MCP search timeout')), TOOL_TIMEOUT_MS)
+        ),
+      ]);
+
+      const resultStr = JSON.stringify(searchResult.content, null, 2);
+      nodeContext += `\n\n=== RELEVANT N8N NODES (sourced from n8n-MCP — 1,084 node database) ===\n${resultStr.slice(0, 8000)}`;
+      console.log('[n8n-mcp] Got', resultStr.length, 'chars of node context');
+    }
+
+    // ── Optionally get DB stats for additional grounding ───────────────────
+    const statsTool = toolNames.find(
+      (n) => n === 'get_database_statistics' || n === 'list_nodes'
+    );
+    if (statsTool && nodeContext.length < 3000) {
+      try {
+        const statsResult = await Promise.race([
+          client.callTool({ name: statsTool, arguments: {} }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('stats timeout')), 10000)
+          ),
+        ]);
+        nodeContext += `\n\n=== N8N NODE REGISTRY STATS ===\n${JSON.stringify(statsResult.content).slice(0, 1500)}`;
+      } catch (statsErr) {
+        console.log('[n8n-mcp] Stats call skipped:', (statsErr as Error).message);
+      }
+    }
+
+    await client.close();
+    console.log('[n8n-mcp] Session closed. Node context chars:', nodeContext.length);
+    return nodeContext;
+
+  } catch (err) {
+    console.log('[n8n-mcp] MCP unavailable — using Claude-only generation:', (err as Error).message);
+    return '';
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -104,13 +215,56 @@ export async function POST(req: NextRequest) {
     .join('\n');
 
   console.log('[generate-build] Context length:', context.length, 'chars');
+
+  // ── 2. n8n-MCP: Look up accurate node configs (n8n only) ─────────────────
+  let mcpNodeContext = '';
+  if (ticket.ticket_type === 'n8n') {
+    console.log('[generate-build] Querying n8n-MCP for node context...');
+    const descriptionForMCP = [ticket.what_to_build, ticket.ai_understanding, ticket.project_name]
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, 800);
+    mcpNodeContext = await getN8nNodeContext(descriptionForMCP);
+    console.log('[generate-build] MCP node context length:', mcpNodeContext.length, 'chars');
+  }
+
   console.log('[generate-build] Launching 3 parallel Claude API calls...');
   const overallStart = Date.now();
 
-  // ── 2. Run all 3 AI generations in parallel ──────────────────────────────
+  // ── 3. Run all 3 AI generations in parallel ──────────────────────────────
   let buildPlanHtml: string;
   let demoHtml: string;
   let workflowJson: string;
+
+  // The workflow JSON prompt is enhanced with MCP node data for n8n tickets
+  const workflowSystemPrompt = ticket.ticket_type === 'n8n'
+    ? `You are an expert n8n automation engineer with access to the complete n8n node library.
+
+Generate a complete, importable n8n workflow JSON for the described automation.
+
+Use valid n8n workflow format:
+- "nodes" array: each node needs id (UUID), name, type (exact n8n node type like "n8n-nodes-base.httpRequest"), typeVersion, position [x,y], parameters
+- "connections" object: maps source node outputs to destination node inputs
+- Include a trigger node (Webhook, Schedule, Email Trigger, etc.)
+- Include processing nodes matching the requirements
+- Include output/action nodes
+- Add an "n8n-nodes-base.errorTrigger" node for error handling
+- Use real, importable n8n node types from the node database below${mcpNodeContext ? '\n\nUse the following node definitions from the n8n-MCP node database to ensure correct node types and parameters:' + mcpNodeContext : ''}
+
+Return ONLY the raw JSON object, no markdown fences, no explanation, no comments.`
+    : ticket.ticket_type === 'make'
+    ? `You are an expert Make.com (Integromat) automation engineer.
+
+Generate a complete, importable Make.com scenario JSON for the described automation.
+Use valid Make.com scenario format with a "modules" array. Each module needs: id, module (like "gateway:CustomWebHook"), version, parameters, mapper, metadata.
+
+Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`
+    : `You are an expert Zapier automation engineer.
+
+Generate a structured JSON describing the complete Zap for this automation.
+Include: trigger (app, event, filters), actions array (each with app, action, field_mappings), and a paths array if conditional logic is needed.
+
+Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`;
 
   try {
     const [buildPlanMsg, demoMsg, workflowMsg] = await Promise.all([
@@ -187,18 +341,8 @@ Output ONLY the complete HTML file, no explanation.`,
       // ── Workflow JSON ──
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 6000,
-        system: `You are an expert ${ticket.ticket_type} automation engineer.
-
-Generate a complete, importable ${ticket.ticket_type} workflow JSON for the described automation.
-
-For n8n: Use valid n8n workflow format with "nodes" array and "connections" object. Each node needs: id, name, type, typeVersion, position [x,y], parameters. Include a Start/Trigger node, processing nodes, and output nodes. Include error handling with an Error Trigger node.
-
-For Make.com (Integromat): Use valid Make.com scenario JSON format with modules array.
-
-For Zapier: Return a structured JSON describing the Zap steps (Zapier doesn't export raw JSON but describe it in a structured format).
-
-Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`,
+        max_tokens: 8000,
+        system: workflowSystemPrompt,
         messages: [
           {
             role: 'user',
@@ -233,7 +377,7 @@ Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`,
     );
   }
 
-  // ── 3. Ensure HTML files have a proper wrapper if Claude omitted it ──────
+  // ── 4. Ensure HTML files have a proper wrapper if Claude omitted it ──────
   if (!buildPlanHtml.trim().startsWith('<!DOCTYPE') && !buildPlanHtml.trim().startsWith('<html')) {
     buildPlanHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Build Plan — ${ticket.project_name || ticket.company_name}</title></head><body>${buildPlanHtml}</body></html>`;
   }
@@ -243,7 +387,6 @@ Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`,
 
   // Validate workflow JSON is parseable; if not, wrap it
   let cleanWorkflowJson = workflowJson.trim();
-  // Strip markdown fences if present
   const fenceMatch = cleanWorkflowJson.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) cleanWorkflowJson = fenceMatch[1].trim();
   try {
@@ -253,11 +396,12 @@ Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`,
     console.warn('[generate-build] Workflow JSON is not valid JSON, wrapping...');
     cleanWorkflowJson = JSON.stringify({
       warning: 'Raw output from AI — may need manual cleanup',
+      mcp_used: mcpNodeContext.length > 0,
       raw: cleanWorkflowJson,
     });
   }
 
-  // ── 4. Upload to Supabase Storage ────────────────────────────────────────
+  // ── 5. Upload to Supabase Storage ────────────────────────────────────────
   const timestamp = Date.now();
   const buildPlanPath = `${ticket_id}/artifacts/build-plan-${timestamp}.html`;
   const demoPath = `${ticket_id}/artifacts/solution-demo-${timestamp}.html`;
@@ -279,7 +423,7 @@ Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`,
     );
   }
 
-  // ── 5. Create ticket_artifacts rows ─────────────────────────────────────
+  // ── 6. Create ticket_artifacts rows ─────────────────────────────────────
   const artifactRows = [
     {
       ticket_id,
@@ -303,7 +447,11 @@ Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`,
       file_name: `workflow-${timestamp}.json`,
       file_path: workflowPath,
       version: 1,
-      metadata: { generated_at: new Date().toISOString(), chars: cleanWorkflowJson.length },
+      metadata: {
+        generated_at: new Date().toISOString(),
+        chars: cleanWorkflowJson.length,
+        mcp_assisted: ticket.ticket_type === 'n8n' && mcpNodeContext.length > 0,
+      },
     },
   ];
 
@@ -324,7 +472,7 @@ Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`,
   console.log('[generate-build] Artifacts inserted:', artifacts?.length, 'rows');
   artifacts?.forEach((a) => console.log('  -', a.artifact_type, ':', a.id));
 
-  // ── 6. Update ticket status ──────────────────────────────────────────────
+  // ── 7. Update ticket status ──────────────────────────────────────────────
   const { error: statusErr } = await supabase
     .from('tickets')
     .update({ status: 'REVIEW_PENDING', updated_at: new Date().toISOString() })
