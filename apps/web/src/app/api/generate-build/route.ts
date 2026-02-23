@@ -13,18 +13,12 @@ const supabase = createClient(
 );
 
 /** Upload a string as a file to Supabase Storage using Buffer (server-safe) */
-async function uploadToStorage(
-  path: string,
-  content: string,
-  contentType: string
-): Promise<void> {
+async function uploadToStorage(path: string, content: string, contentType: string): Promise<void> {
   console.log(`[generate-build] Uploading ${path} (${content.length} chars, ${contentType})...`);
   const buffer = Buffer.from(content, 'utf-8');
-
   const { error } = await supabase.storage
     .from('ticket-files')
     .upload(path, buffer, { contentType, upsert: true });
-
   if (error) {
     console.error(`[generate-build] Storage upload failed for ${path}:`, error);
     throw new Error(`Storage upload failed for ${path}: ${error.message}`);
@@ -33,10 +27,8 @@ async function uploadToStorage(
 }
 
 // ── n8n-MCP Integration ───────────────────────────────────────────────────────
-//
 // Uses https://github.com/czlonkowski/n8n-mcp — a local MCP server with
-// 1,084 n8n node definitions. Spawned as a subprocess via stdio transport.
-// Falls back to Claude-only generation if the server is unavailable.
+// 1,084 n8n node definitions. Falls back gracefully if unavailable.
 
 async function getN8nNodeContext(description: string): Promise<string> {
   const CONNECT_TIMEOUT_MS = 15000;
@@ -45,7 +37,6 @@ async function getN8nNodeContext(description: string): Promise<string> {
   try {
     console.log('[n8n-mcp] Attempting to connect to n8n-MCP server...');
 
-    // Dynamic require — avoids static import failures if package structure changes
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { Client } = require('@modelcontextprotocol/sdk/client') as {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,7 +65,6 @@ async function getN8nNodeContext(description: string): Promise<string> {
       { capabilities: {} }
     );
 
-    // Connect with timeout
     await Promise.race([
       client.connect(transport),
       new Promise<never>((_, reject) =>
@@ -83,7 +73,6 @@ async function getN8nNodeContext(description: string): Promise<string> {
     ]);
     console.log('[n8n-mcp] Connected successfully');
 
-    // Discover available tools
     const toolsResult = await client.listTools();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const toolNames: string[] = toolsResult.tools.map((t: any) => t.name);
@@ -91,7 +80,6 @@ async function getN8nNodeContext(description: string): Promise<string> {
 
     let nodeContext = '';
 
-    // ── Search for relevant nodes ───────────────────────────────────────────
     const searchToolName = toolNames.find(
       (n) => n === 'search_nodes' || n === 'get_node_for_task' || n.includes('search')
     );
@@ -101,42 +89,20 @@ async function getN8nNodeContext(description: string): Promise<string> {
       console.log(`[n8n-mcp] Calling ${searchToolName}...`);
 
       const searchResult = await Promise.race([
-        client.callTool({
-          name: searchToolName,
-          arguments: { query, limit: 12 },
-        }),
+        client.callTool({ name: searchToolName, arguments: { query, limit: 12 } }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('n8n-MCP search timeout')), TOOL_TIMEOUT_MS)
         ),
       ]);
 
       const resultStr = JSON.stringify(searchResult.content, null, 2);
-      nodeContext += `\n\n=== RELEVANT N8N NODES (sourced from n8n-MCP — 1,084 node database) ===\n${resultStr.slice(0, 8000)}`;
+      nodeContext += `\n\n=== RELEVANT N8N NODES (from n8n-MCP node database) ===\n${resultStr.slice(0, 8000)}`;
       console.log('[n8n-mcp] Got', resultStr.length, 'chars of node context');
-    }
-
-    // ── Optionally get DB stats for additional grounding ───────────────────
-    const statsTool = toolNames.find(
-      (n) => n === 'get_database_statistics' || n === 'list_nodes'
-    );
-    if (statsTool && nodeContext.length < 3000) {
-      try {
-        const statsResult = await Promise.race([
-          client.callTool({ name: statsTool, arguments: {} }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('stats timeout')), 10000)
-          ),
-        ]);
-        nodeContext += `\n\n=== N8N NODE REGISTRY STATS ===\n${JSON.stringify(statsResult.content).slice(0, 1500)}`;
-      } catch (statsErr) {
-        console.log('[n8n-mcp] Stats call skipped:', (statsErr as Error).message);
-      }
     }
 
     await client.close();
     console.log('[n8n-mcp] Session closed. Node context chars:', nodeContext.length);
     return nodeContext;
-
   } catch (err) {
     console.log('[n8n-mcp] MCP unavailable — using Claude-only generation:', (err as Error).message);
     return '';
@@ -171,10 +137,7 @@ export async function POST(req: NextRequest) {
 
   if (ticketError || !ticket) {
     console.error('[generate-build] Ticket fetch error:', ticketError);
-    return NextResponse.json(
-      { error: 'Ticket not found: ' + ticketError?.message },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: 'Ticket not found: ' + ticketError?.message }, { status: 404 });
   }
 
   console.log('[generate-build] Ticket:', {
@@ -182,10 +145,19 @@ export async function POST(req: NextRequest) {
     project: ticket.project_name,
     platform: ticket.ticket_type,
     status: ticket.status,
-    has_understanding: !!ticket.ai_understanding,
   });
 
-  // Build rich context from all ticket fields
+  // ── 2. Fetch ticket assets ───────────────────────────────────────────────
+  const { data: assets } = await supabase
+    .from('ticket_assets')
+    .select('*')
+    .eq('ticket_id', ticket_id);
+
+  const assetSummary = (assets ?? [])
+    .map((a) => `- ${a.file_name || a.external_url} (${a.category}, ${a.asset_type})`)
+    .join('\n');
+
+  // ── 3. Build rich context ────────────────────────────────────────────────
   const answeredQuestions = Array.isArray(ticket.ai_questions)
     ? ticket.ai_questions
         .filter((q: { answer?: string }) => q.answer)
@@ -209,14 +181,37 @@ export async function POST(req: NextRequest) {
     ``,
     `=== AI ANALYSIS ===`,
     ticket.ai_understanding || ticket.ai_summary || 'See project description above',
-    answeredQuestions ? `\n=== CLARIFICATIONS ===\n${answeredQuestions}` : '',
+    answeredQuestions ? `\n=== CLARIFICATIONS Q&A ===\n${answeredQuestions}` : '',
+    assetSummary ? `\n=== UPLOADED DOCUMENTS ===\n${assetSummary}` : '',
   ]
     .filter(Boolean)
     .join('\n');
 
   console.log('[generate-build] Context length:', context.length, 'chars');
 
-  // ── 2. n8n-MCP: Look up accurate node configs (n8n only) ─────────────────
+  // ── 4. Template matching ─────────────────────────────────────────────────
+  console.log('[generate-build] Fetching matching templates from library...');
+  const { data: matchingTemplates } = await supabase
+    .from('templates')
+    .select('name, description, category, tags')
+    .eq('platform', ticket.ticket_type)
+    .limit(8);
+
+  const templateMatchContext = matchingTemplates?.length
+    ? `\n\nEXISTING TEMPLATE LIBRARY — Review these templates for the ${ticket.ticket_type} platform. If one closely matches the requirements, use it as a starting point and customize it. If none match well, generate from scratch:\n${matchingTemplates.map((t) => `- "${t.name}" [${t.category}]: ${t.description}`).join('\n')}`
+    : '';
+
+  const matchedTemplateName = matchingTemplates?.find((t) => {
+    const what = (ticket.what_to_build || '').toLowerCase();
+    const name = t.name.toLowerCase();
+    const desc = (t.description || '').toLowerCase();
+    // Very basic similarity check — Claude will do the real matching
+    return what.includes(name.split(' ')[0]) || desc.split(' ').some((w: string) => w.length > 5 && what.includes(w));
+  })?.name;
+
+  console.log('[generate-build] Found', matchingTemplates?.length ?? 0, 'platform templates. Best match:', matchedTemplateName ?? 'none');
+
+  // ── 5. n8n-MCP: Look up node configs (n8n only) ──────────────────────────
   let mcpNodeContext = '';
   if (ticket.ticket_type === 'n8n') {
     console.log('[generate-build] Querying n8n-MCP for node context...');
@@ -231,114 +226,121 @@ export async function POST(req: NextRequest) {
   console.log('[generate-build] Launching 3 parallel Claude API calls...');
   const overallStart = Date.now();
 
-  // ── 3. Run all 3 AI generations in parallel ──────────────────────────────
-  let buildPlanHtml: string;
-  let demoHtml: string;
-  let workflowJson: string;
-
-  // The workflow JSON prompt is enhanced with MCP node data for n8n tickets
-  const workflowSystemPrompt = ticket.ticket_type === 'n8n'
-    ? `You are an expert n8n automation engineer with access to the complete n8n node library.
+  // ── 6. Build platform-specific workflow prompt ───────────────────────────
+  const workflowSystemPrompt =
+    ticket.ticket_type === 'n8n'
+      ? `You are an expert n8n automation engineer with access to the complete n8n node library.
 
 Generate a complete, importable n8n workflow JSON for the described automation.
 
 Use valid n8n workflow format:
-- "nodes" array: each node needs id (UUID), name, type (exact n8n node type like "n8n-nodes-base.httpRequest"), typeVersion, position [x,y], parameters
-- "connections" object: maps source node outputs to destination node inputs
+- "nodes" array: each node needs id (UUID string), name, type (exact n8n node type like "n8n-nodes-base.httpRequest"), typeVersion (integer), position ([x,y] array), parameters (object)
+- "connections" object: maps source node name → {main: [[{node: "target", type: "main", index: 0}]]}
 - Include a trigger node (Webhook, Schedule, Email Trigger, etc.)
-- Include processing nodes matching the requirements
-- Include output/action nodes
-- Add an "n8n-nodes-base.errorTrigger" node for error handling
-- Use real, importable n8n node types from the node database below${mcpNodeContext ? '\n\nUse the following node definitions from the n8n-MCP node database to ensure correct node types and parameters:' + mcpNodeContext : ''}
+- Include error handling with "n8n-nodes-base.errorTrigger"
+- Add realistic parameter values, not just empty objects${templateMatchContext}${mcpNodeContext ? '\n\nUse these node definitions from n8n-MCP database to ensure correct types:\n' + mcpNodeContext : ''}
 
-Return ONLY the raw JSON object, no markdown fences, no explanation, no comments.`
-    : ticket.ticket_type === 'make'
-    ? `You are an expert Make.com (Integromat) automation engineer.
+Return ONLY the raw JSON object, no markdown fences, no explanation.`
+      : ticket.ticket_type === 'make'
+      ? `You are an expert Make.com (formerly Integromat) automation engineer.
 
-Generate a complete, importable Make.com scenario JSON for the described automation.
-Use valid Make.com scenario format with a "modules" array. Each module needs: id, module (like "gateway:CustomWebHook"), version, parameters, mapper, metadata.
+Generate a complete, importable Make.com scenario JSON.
+Use valid Make.com format with a "modules" array. Each module: id (integer), module (like "gateway:CustomWebHook"), version, parameters, mapper, metadata.
+Include proper connections between modules.${templateMatchContext}
 
-Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`
-    : `You are an expert Zapier automation engineer.
+Return ONLY the raw JSON, no markdown fences, no explanation.`
+      : `You are an expert Zapier automation engineer.
 
-Generate a structured JSON describing the complete Zap for this automation.
-Include: trigger (app, event, filters), actions array (each with app, action, field_mappings), and a paths array if conditional logic is needed.
+Generate a structured JSON describing the complete Zap.
+Include:
+- trigger: {app, event, filters, sample_data}
+- actions: array of {app, action, field_mappings, description}
+- paths: conditional logic branches if needed
+- error_handling: description of failure scenarios${templateMatchContext}
 
-Return ONLY the raw JSON, no markdown fences, no explanation, no comments.`;
+Return ONLY the raw JSON, no markdown fences, no explanation.`;
+
+  // ── 7. Run all 3 AI generations in parallel ──────────────────────────────
+  let buildPlanHtml: string;
+  let demoHtml: string;
+  let workflowJson: string;
 
   try {
     const [buildPlanMsg, demoMsg, workflowMsg] = await Promise.all([
-      // ── Build Plan HTML ──
+      // ── Build Plan HTML ──────────────────────────────────────────────────
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
-        system: `You are a senior automation engineer writing a comprehensive build manual for a client.
+        system: `You are a senior automation engineer writing a comprehensive build manual for a client project.
 
-Generate a COMPLETE, DETAILED build plan as a standalone HTML file. The output must be valid HTML that opens correctly in a browser.
+Generate a COMPLETE, DETAILED build plan as a standalone HTML file that opens directly in a browser.
 
-Requirements:
-- Include a proper <!DOCTYPE html> declaration and full HTML structure
-- Executive Summary section
-- System Architecture with data flow description
-- Step-by-step workflow configuration instructions
-- Required accounts, API connections, and credentials needed
-- Node/module-by-module setup instructions for ${ticket.ticket_type}
-- Testing plan with specific test cases
-- Deployment and monitoring guide
-- Troubleshooting section
+Required sections:
+1. Executive Summary — what this automation does and the business value
+2. System Architecture — ASCII diagram of the data flow + description
+3. Prerequisites — all accounts, API keys, webhooks, and permissions needed before starting
+4. Step-by-Step Build Instructions — numbered, detailed steps for each workflow node/module
+5. Node/Module Configuration — exact settings, parameters, and credentials for each component
+6. Data Mapping Reference — input fields → output fields table
+7. Testing Plan — specific test cases with expected inputs/outputs
+8. Deployment Checklist — pre-launch validation steps
+9. Monitoring & Alerting — how to know when it breaks
+10. Troubleshooting Guide — common failure modes and fixes
 
-Design requirements (all styles must be inline or in a <style> tag in <head>):
-- Font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif
-- Primary color: #4A8FD6 (blue)
-- Text: #1A1A2E
-- Background: #F8F9FB for page, white for content cards
-- Sections in white cards with subtle box-shadow
-- Code blocks in dark background (#1e1e1e) with monospace font
-- Professional enough to send directly to the client
+HTML design (all styles inline or in <style> tag in <head>):
+- Font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
+- Primary: #4A8FD6 (blue), text: #1A1A2E, page bg: #F8F9FB
+- White cards with border-radius: 12px, box-shadow: 0 2px 12px rgba(0,0,0,0.08)
+- h2 sections with left blue border (border-left: 4px solid #4A8FD6)
+- Code/config blocks: background #1e1e1e, color #d4d4d4, font-family monospace
+- Tables with alternate row shading
+- Section numbers in blue circles
+- Professional enough to send to the client directly
 
-Output ONLY the complete HTML file, no explanation.`,
+Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
         messages: [
           {
             role: 'user',
-            content: `Generate the complete build plan HTML for this project:\n\n${context}`,
+            content: `Generate the complete build plan for:\n\n${context}`,
           },
         ],
       }),
 
-      // ── Solution Demo HTML ──
+      // ── Solution Demo HTML ───────────────────────────────────────────────
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
-        system: `You are creating an interactive HTML demo presentation for a client automation solution.
+        system: `You are creating an interactive HTML demo for a client showing their automation solution.
 
-Generate a SINGLE, complete, self-contained HTML file with vanilla JavaScript only (no external dependencies except Google Fonts via @import in CSS).
+Generate a SINGLE, complete, self-contained HTML file with vanilla JavaScript only.
+Import Google Font DM Sans with @import in the CSS.
 
-The page must have tab navigation with these sections:
-1. Overview — What the solution does
-2. The Challenge — Business problem being solved
-3. How It Works — Visual step-by-step flow of the automation (show numbered steps with arrows)
-4. Live Demo — Simulated interactive demo showing real-looking data flowing through the system. Make it interactive — clicking a "Run Demo" button should animate data flowing through
-5. ROI — Time saved, cost reduction, efficiency gains with animated number counters
-6. Next Steps — Implementation timeline
+Tab navigation with these 6 sections:
+1. Overview — headline, what this automation does, key benefits list
+2. The Challenge — business problem, pain points, current state vs. future state
+3. How It Works — numbered step-by-step visual flow of the automation with connecting arrows, each step has an icon and description
+4. Live Demo — interactive simulation: a "Run Demo" button that animates data flowing through the system. Show realistic-looking data (emails, records, messages) transforming at each step. Make it actually click-interactive.
+5. ROI — time saved per week/month, cost reduction estimate, efficiency gain — use animated counting number displays that count up when the tab is active
+6. Next Steps — implementation timeline (days per phase), what ManageAI delivers, CTA to get started
 
-Design requirements (all CSS inline or in <style> tag):
-- Google Font: DM Sans (import from fonts.googleapis.com)
-- Primary: #4A8FD6, background: #ffffff, cards: #F8F9FB
-- Active tab: blue underline, inactive: gray
-- Smooth CSS transitions on tab switches
-- Professional, polished look
-- Mobile responsive
+Design:
+- DM Sans font, primary: #4A8FD6, background: #fff, card bg: #F8F9FB
+- Active tab: blue bottom border + blue text, inactive: gray
+- Smooth fadeIn transition between tabs (CSS only, no jQuery)
+- Step arrows in How It Works: use → emoji or CSS borders
+- Mobile responsive (max-width 900px centered)
+- Very polished, client-ready presentation
 
-Output ONLY the complete HTML file, no explanation.`,
+Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
         messages: [
           {
             role: 'user',
-            content: `Generate the interactive solution demo HTML for this project:\n\n${context}`,
+            content: `Generate the interactive solution demo for:\n\n${context}`,
           },
         ],
       }),
 
-      // ── Workflow JSON ──
+      // ── Workflow JSON ────────────────────────────────────────────────────
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
@@ -362,8 +364,7 @@ Output ONLY the complete HTML file, no explanation.`,
         ? demoMsg.content[0].text
         : '<html><body><p>Error generating demo</p></body></html>';
 
-    workflowJson =
-      workflowMsg.content[0].type === 'text' ? workflowMsg.content[0].text : '{}';
+    workflowJson = workflowMsg.content[0].type === 'text' ? workflowMsg.content[0].text : '{}';
 
     console.log('[generate-build] All 3 Claude calls completed in', Date.now() - overallStart, 'ms');
     console.log('[generate-build] Build plan:', buildPlanHtml.length, 'chars');
@@ -377,31 +378,35 @@ Output ONLY the complete HTML file, no explanation.`,
     );
   }
 
-  // ── 4. Ensure HTML files have a proper wrapper if Claude omitted it ──────
-  if (!buildPlanHtml.trim().startsWith('<!DOCTYPE') && !buildPlanHtml.trim().startsWith('<html')) {
+  // ── 8. Ensure HTML files have proper DOCTYPE wrapper ─────────────────────
+  if (!buildPlanHtml.trim().toLowerCase().startsWith('<!doctype') && !buildPlanHtml.trim().startsWith('<html')) {
     buildPlanHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Build Plan — ${ticket.project_name || ticket.company_name}</title></head><body>${buildPlanHtml}</body></html>`;
   }
-  if (!demoHtml.trim().startsWith('<!DOCTYPE') && !demoHtml.trim().startsWith('<html')) {
+  if (!demoHtml.trim().toLowerCase().startsWith('<!doctype') && !demoHtml.trim().startsWith('<html')) {
     demoHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Solution Demo — ${ticket.project_name || ticket.company_name}</title></head><body>${demoHtml}</body></html>`;
   }
 
-  // Validate workflow JSON is parseable; if not, wrap it
+  // Validate and clean workflow JSON
   let cleanWorkflowJson = workflowJson.trim();
   const fenceMatch = cleanWorkflowJson.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) cleanWorkflowJson = fenceMatch[1].trim();
+
+  let workflowIsValid = false;
   try {
     JSON.parse(cleanWorkflowJson);
+    workflowIsValid = true;
     console.log('[generate-build] Workflow JSON is valid');
   } catch {
-    console.warn('[generate-build] Workflow JSON is not valid JSON, wrapping...');
+    console.warn('[generate-build] Workflow JSON is not valid JSON, wrapping as raw...');
     cleanWorkflowJson = JSON.stringify({
-      warning: 'Raw output from AI — may need manual cleanup',
-      mcp_used: mcpNodeContext.length > 0,
+      _warning: 'Raw output from AI — may need manual cleanup',
+      _mcp_assisted: mcpNodeContext.length > 0,
+      _template_matched: matchedTemplateName ?? null,
       raw: cleanWorkflowJson,
     });
   }
 
-  // ── 5. Upload to Supabase Storage ────────────────────────────────────────
+  // ── 9. Upload to Supabase Storage ─────────────────────────────────────────
   const timestamp = Date.now();
   const buildPlanPath = `${ticket_id}/artifacts/build-plan-${timestamp}.html`;
   const demoPath = `${ticket_id}/artifacts/solution-demo-${timestamp}.html`;
@@ -423,7 +428,7 @@ Output ONLY the complete HTML file, no explanation.`,
     );
   }
 
-  // ── 6. Create ticket_artifacts rows ─────────────────────────────────────
+  // ── 10. Create ticket_artifacts rows ──────────────────────────────────────
   const artifactRows = [
     {
       ticket_id,
@@ -431,7 +436,11 @@ Output ONLY the complete HTML file, no explanation.`,
       file_name: `build-plan-${timestamp}.html`,
       file_path: buildPlanPath,
       version: 1,
-      metadata: { generated_at: new Date().toISOString(), chars: buildPlanHtml.length },
+      metadata: {
+        generated_at: new Date().toISOString(),
+        chars: buildPlanHtml.length,
+        template_matched: matchedTemplateName ?? null,
+      },
     },
     {
       ticket_id,
@@ -439,7 +448,10 @@ Output ONLY the complete HTML file, no explanation.`,
       file_name: `solution-demo-${timestamp}.html`,
       file_path: demoPath,
       version: 1,
-      metadata: { generated_at: new Date().toISOString(), chars: demoHtml.length },
+      metadata: {
+        generated_at: new Date().toISOString(),
+        chars: demoHtml.length,
+      },
     },
     {
       ticket_id,
@@ -451,11 +463,13 @@ Output ONLY the complete HTML file, no explanation.`,
         generated_at: new Date().toISOString(),
         chars: cleanWorkflowJson.length,
         mcp_assisted: ticket.ticket_type === 'n8n' && mcpNodeContext.length > 0,
+        valid_json: workflowIsValid,
+        template_matched: matchedTemplateName ?? null,
       },
     },
   ];
 
-  console.log('[generate-build] Inserting artifact records into ticket_artifacts...');
+  console.log('[generate-build] Inserting artifact records...');
   const { data: artifacts, error: artifactError } = await supabase
     .from('ticket_artifacts')
     .insert(artifactRows)
@@ -463,16 +477,12 @@ Output ONLY the complete HTML file, no explanation.`,
 
   if (artifactError) {
     console.error('[generate-build] Artifact insert error:', artifactError);
-    return NextResponse.json(
-      { error: 'DB insert failed: ' + artifactError.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'DB insert failed: ' + artifactError.message }, { status: 500 });
   }
 
   console.log('[generate-build] Artifacts inserted:', artifacts?.length, 'rows');
-  artifacts?.forEach((a) => console.log('  -', a.artifact_type, ':', a.id));
 
-  // ── 7. Update ticket status ──────────────────────────────────────────────
+  // ── 11. Update ticket status to REVIEW_PENDING ───────────────────────────
   const { error: statusErr } = await supabase
     .from('tickets')
     .update({ status: 'REVIEW_PENDING', updated_at: new Date().toISOString() })
@@ -481,9 +491,14 @@ Output ONLY the complete HTML file, no explanation.`,
   if (statusErr) {
     console.error('[generate-build] Status update error:', statusErr);
   } else {
-    console.log('[generate-build] Ticket status updated to REVIEW_PENDING');
+    console.log('[generate-build] Ticket status → REVIEW_PENDING');
   }
 
   console.log('[generate-build] Done. Total time:', Date.now() - overallStart, 'ms');
-  return NextResponse.json({ artifacts: artifacts ?? [], success: true });
+  return NextResponse.json({
+    artifacts: artifacts ?? [],
+    success: true,
+    template_matched: matchedTemplateName ?? null,
+    mcp_assisted: mcpNodeContext.length > 0,
+  });
 }

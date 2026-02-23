@@ -7,6 +7,7 @@ import {
   PlusCircle,
   ClipboardList,
   BookOpen,
+  Package,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -22,6 +23,7 @@ const navItems = [
   { href: '/portal/new-ticket', label: 'New Ticket', icon: PlusCircle },
   { href: '/dashboard/tickets', label: 'Tickets', icon: ClipboardList },
   { href: '/dashboard/templates', label: 'Templates', icon: BookOpen },
+  { href: '/dashboard/delivery', label: 'Delivery', icon: Package },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 

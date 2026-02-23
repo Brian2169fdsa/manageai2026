@@ -233,6 +233,13 @@ export default function NewTicketPage() {
       setStep(3);
       console.log('[wizard] Advanced to step 3');
 
+      // If no questions needed, auto-start generation immediately
+      if (result.ready_to_build && (!result.questions || result.questions.length === 0)) {
+        console.log('[wizard] No questions needed — auto-triggering generate-build');
+        // Use ticket.id directly since state update hasn't committed yet
+        handleGenerateBuild(ticket.id);
+      }
+
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[wizard] Unexpected error in handleStep2Next:', e);
@@ -283,36 +290,38 @@ export default function NewTicketPage() {
       setSummary(result.summary || summary);
       setUnderstanding(result.understanding || understanding);
       setQuestions(result.questions ?? []);
-      setReadyToBuild(result.ready_to_build ?? false);
-
-      if (result.ready_to_build) {
-        toast.success('AI has everything it needs. Click "Generate Deliverables"!');
-      } else {
-        toast.info(`AI has ${result.questions?.length ?? 0} more question(s).`);
-      }
+      setReadyToBuild(true); // Force ready after answers — auto-build regardless
     } catch (e) {
       console.error('[wizard] Error in handleAnswersSubmitted:', e);
       toast.error('Re-analysis failed: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
       setReAnalyzing(false);
+      return; // Don't auto-build if re-analysis failed
     }
+
+    setReAnalyzing(false);
+
+    // Auto-trigger generate-build after answers submitted
+    console.log('[wizard] Answers submitted — auto-triggering generate-build');
+    await handleGenerateBuild();
   }
 
   // ── Generate deliverables ────────────────────────────────────────────────
-  async function handleGenerateBuild() {
-    if (!ticketId) {
+  // Accepts an optional explicit id so it can be called before state settles
+  async function handleGenerateBuild(explicitId?: string) {
+    const tid = explicitId ?? ticketId;
+    if (!tid) {
       console.error('[wizard] handleGenerateBuild called but ticketId is null');
       return;
     }
     console.log('\n=== [wizard] handleGenerateBuild ===');
-    console.log('[wizard] Calling /api/generate-build for ticket:', ticketId);
+    console.log('[wizard] Calling /api/generate-build for ticket:', tid);
 
     setIsGenerating(true);
     try {
       const res = await fetch('/api/generate-build', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket_id: ticketId }),
+        body: JSON.stringify({ ticket_id: tid }),
       });
 
       console.log('[wizard] /api/generate-build response status:', res.status, res.statusText);
