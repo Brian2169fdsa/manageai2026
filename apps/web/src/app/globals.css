@@ -125,63 +125,12 @@
   }
 }
 
-/* Login page animations */
-@keyframes blob-float {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -30px) scale(1.05); }
-  66% { transform: translate(-20px, 20px) scale(0.95); }
-}
-@keyframes blob-float-2 {
-  0%, 100% { transform: translate(0, 0) scale(1.05); }
-  33% { transform: translate(-25px, 20px) scale(0.95); }
-  66% { transform: translate(30px, -15px) scale(1.1); }
-}
-@keyframes blob-float-3 {
-  0%, 100% { transform: translate(0, 0) scale(0.95); }
-  50% { transform: translate(20px, 25px) scale(1.05); }
-}
-@keyframes shimmer-text {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-@keyframes fade-up {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
+.analyzing-dot {
+  animation: analyzing-pulse 1.4s ease-in-out infinite;
 }
 @keyframes analyzing-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.login-blob-1 {
-  animation: blob-float 8s ease-in-out infinite;
-}
-.login-blob-2 {
-  animation: blob-float-2 10s ease-in-out infinite;
-}
-.login-blob-3 {
-  animation: blob-float-3 12s ease-in-out infinite;
-}
-.login-fade-up {
-  animation: fade-up 0.6s ease-out forwards;
-}
-.login-fade-up-delay-1 { animation: fade-up 0.6s ease-out 0.1s both; }
-.login-fade-up-delay-2 { animation: fade-up 0.6s ease-out 0.2s both; }
-.login-fade-up-delay-3 { animation: fade-up 0.6s ease-out 0.3s both; }
-.login-fade-up-delay-4 { animation: fade-up 0.6s ease-out 0.4s both; }
-
-.gradient-logo {
-  background: linear-gradient(135deg, #ffffff 0%, #93c5fd 40%, #818cf8 70%, #ffffff 100%);
-  background-size: 200% 200%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: shimmer-text 4s ease infinite;
-}
-
-.analyzing-dot {
-  animation: analyzing-pulse 1.4s ease-in-out infinite;
+  50% { opacity: 0.4; }
 }
 .analyzing-dot:nth-child(2) { animation-delay: 0.2s; }
 .analyzing-dot:nth-child(3) { animation-delay: 0.4s; }
