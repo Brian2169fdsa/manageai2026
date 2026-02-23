@@ -138,7 +138,7 @@ export default function TemplatesPage() {
       const matchesSearch =
         !search ||
         t.name.toLowerCase().includes(search.toLowerCase()) ||
-        t.description.toLowerCase().includes(search.toLowerCase()) ||
+        (t.description ?? '').toLowerCase().includes(search.toLowerCase()) ||
         (t.tags ?? []).some((tag) => tag.toLowerCase().includes(search.toLowerCase()));
       return matchesPlatform && matchesCategory && matchesSearch;
     });

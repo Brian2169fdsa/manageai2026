@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
 import { TicketWizardStep1 } from '@/components/portal/TicketWizardStep1';
@@ -33,18 +33,22 @@ const defaultStep2: WizardStep2Data = {
 export default function NewTicketPage() {
   const searchParams = useSearchParams();
   const [step, setStep] = useState(1);
-  const [step1, setStep1] = useState<WizardStep1Data>(() => {
+  const [step1, setStep1] = useState<WizardStep1Data>(defaultStep1);
+
+  // Pre-fill form from URL params (e.g. when navigating from Templates)
+  useEffect(() => {
     const platform = searchParams.get('platform') as WizardStep1Data['ticket_type'] | null;
     const what = searchParams.get('what_to_build');
     const project = searchParams.get('project_name');
-    if (!platform && !what && !project) return defaultStep1;
-    return {
-      ...defaultStep1,
-      ...(platform && { ticket_type: platform }),
-      ...(what && { what_to_build: what }),
-      ...(project && { project_name: project }),
-    };
-  });
+    if (platform || what || project) {
+      setStep1((prev) => ({
+        ...prev,
+        ...(platform && { ticket_type: platform }),
+        ...(what && { what_to_build: what }),
+        ...(project && { project_name: project }),
+      }));
+    }
+  }, [searchParams]);
   const [step2, setStep2] = useState<WizardStep2Data>(defaultStep2);
 
   const [ticketId, setTicketId] = useState<string | null>(null);
