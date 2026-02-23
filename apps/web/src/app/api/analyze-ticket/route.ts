@@ -43,6 +43,13 @@ function extractJson(raw: string): Record<string, unknown> {
 export async function POST(req: NextRequest) {
   console.log('\n========== [analyze-ticket] POST called ==========');
 
+  // ── Env var diagnostics ──────────────────────────────────────────────────
+  console.log('[analyze-ticket] ANTHROPIC_API_KEY exists:', !!process.env.ANTHROPIC_API_KEY);
+  console.log('[analyze-ticket] NEXT_PUBLIC_SUPABASE_URL exists:', !!process.env.NEXT_PUBLIC_SUPABASE_URL);
+  console.log('[analyze-ticket] SUPABASE_SERVICE_ROLE_KEY exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+  console.log('[analyze-ticket] NEXT_PUBLIC_SUPABASE_ANON_KEY exists:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
+  try {
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -237,4 +244,13 @@ Rules:
 
   console.log('[analyze-ticket] Done. Returning result to client.');
   return NextResponse.json(safeResult);
+
+  } catch (outerErr) {
+    console.error('[analyze-ticket] UNHANDLED ERROR:', outerErr);
+    console.error('[analyze-ticket] Stack:', outerErr instanceof Error ? outerErr.stack : String(outerErr));
+    return NextResponse.json(
+      { error: 'Internal server error: ' + (outerErr instanceof Error ? outerErr.message : String(outerErr)) },
+      { status: 500 }
+    );
+  }
 }
