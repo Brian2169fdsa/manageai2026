@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
+import { sendEmail, analysisCompleteHtml } from '@/lib/email/notifications';
 
 // Allow up to 5 minutes for AI analysis
 export const maxDuration = 300;
@@ -297,6 +298,20 @@ Rules:
       console.error('[analyze-ticket] DB update error:', updateError);
     } else {
       console.log('[analyze-ticket] Ticket updated. New status:', newStatus);
+    }
+
+    // Send analysis-complete email (best-effort)
+    if (ticket.contact_email) {
+      const html = analysisCompleteHtml({
+        ...ticket,
+        status: newStatus,
+      });
+      sendEmail({
+        to: ticket.contact_email,
+        subject: `[Manage AI] AI Analysis Ready — ${ticket.project_name ?? ticket.company_name}`,
+        html,
+        ticket_id,
+      }).catch((e) => console.error('[analyze-ticket] Email send failed:', e));
     }
 
     console.log('[analyze-ticket] Done. Returning result to client.');

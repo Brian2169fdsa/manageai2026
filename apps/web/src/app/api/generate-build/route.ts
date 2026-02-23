@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
+import { sendEmail, buildCompleteHtml } from '@/lib/email/notifications';
 
 // Allow up to 5 minutes — parallel Claude calls + optional MCP lookup
 export const maxDuration = 300;
@@ -227,38 +228,141 @@ export async function POST(req: NextRequest) {
   const overallStart = Date.now();
 
   // ── 6. Build platform-specific workflow prompt ───────────────────────────
+  // Cap MCP context to prevent token overflow
+  const mcpContextCapped = mcpNodeContext.slice(0, 4000);
+  // Cap template context
+  const templateContextCapped = templateMatchContext.slice(0, 2000);
+
+  const n8nWorkflowSystem = `You are an expert n8n automation engineer. Generate a complete, importable n8n workflow definition JSON.
+
+A workflow definition is a JSON FILE that describes the structure of the automation: which nodes exist and how they connect. This is NOT runtime data and does NOT use n8n expressions ({{ }} syntax). Parameter values should be literal strings, numbers, or booleans.
+
+The JSON must have this exact shape:
+{
+  "name": "Descriptive Workflow Name",
+  "nodes": [
+    {
+      "id": "1a2b3c4d-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "my-webhook",
+        "responseMode": "onReceived"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0000-0000-0000-000000000002",
+      "name": "Process Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [470, 300],
+      "parameters": {
+        "fields": { "values": [{ "name": "processedAt", "stringValue": "={{ $now }}" }] }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Process Data", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "tags": []
+}
+
+Use real n8n node types: n8n-nodes-base.webhook, n8n-nodes-base.httpRequest, n8n-nodes-base.set, n8n-nodes-base.if, n8n-nodes-base.merge, n8n-nodes-base.splitInBatches, n8n-nodes-base.slack, n8n-nodes-base.gmail, n8n-nodes-base.hubspot, n8n-nodes-base.salesforce, n8n-nodes-base.airtable, n8n-nodes-base.notion, n8n-nodes-base.googleSheets, n8n-nodes-base.sendGrid, n8n-nodes-base.bambooHr, n8n-nodes-base.zoom.
+
+Include 6-10 nodes with realistic parameters for the specific use case.${templateContextCapped}${mcpContextCapped ? '\n\nAvailable n8n nodes:\n' + mcpContextCapped : ''}`;
+
   const workflowSystemPrompt =
     ticket.ticket_type === 'n8n'
-      ? `You are an expert n8n automation engineer with access to the complete n8n node library.
-
-Generate a complete, importable n8n workflow JSON for the described automation.
-
-Use valid n8n workflow format:
-- "nodes" array: each node needs id (UUID string), name, type (exact n8n node type like "n8n-nodes-base.httpRequest"), typeVersion (integer), position ([x,y] array), parameters (object)
-- "connections" object: maps source node name → {main: [[{node: "target", type: "main", index: 0}]]}
-- Include a trigger node (Webhook, Schedule, Email Trigger, etc.)
-- Include error handling with "n8n-nodes-base.errorTrigger"
-- Add realistic parameter values, not just empty objects${templateMatchContext}${mcpNodeContext ? '\n\nUse these node definitions from n8n-MCP database to ensure correct types:\n' + mcpNodeContext : ''}
-
-Return ONLY the raw JSON object, no markdown fences, no explanation.`
+      ? n8nWorkflowSystem
       : ticket.ticket_type === 'make'
-      ? `You are an expert Make.com (formerly Integromat) automation engineer.
+      ? `You are an expert Make.com automation engineer. Generate a complete, importable Make.com scenario blueprint JSON.
 
-Generate a complete, importable Make.com scenario JSON.
-Use valid Make.com format with a "modules" array. Each module: id (integer), module (like "gateway:CustomWebHook"), version, parameters, mapper, metadata.
-Include proper connections between modules.${templateMatchContext}
+The JSON must have this exact shape:
+{
+  "name": "Scenario Name",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": { "hook": "{{hookId}}" },
+      "mapper": {},
+      "metadata": { "designer": { "x": 0, "y": 0 } }
+    },
+    {
+      "id": 2,
+      "module": "google-sheets:addRow",
+      "version": 2,
+      "parameters": {},
+      "mapper": { "spreadsheetId": "{{spreadsheetId}}", "values": {} },
+      "metadata": { "designer": { "x": 300, "y": 0 } }
+    }
+  ],
+  "metadata": { "instant": true, "version": 1 },
+  "routes": []
+}
 
-Return ONLY the raw JSON, no markdown fences, no explanation.`
-      : `You are an expert Zapier automation engineer.
+Make.com module naming convention: "app:moduleName" (e.g., "google-sheets:addRow", "slack:createMessage", "hubspot:createContact", "email:sendEmail", "router:RouterModule", "builtin:BasicRouter").
 
-Generate a structured JSON describing the complete Zap.
-Include:
-- trigger: {app, event, filters, sample_data}
-- actions: array of {app, action, field_mappings, description}
-- paths: conditional logic branches if needed
-- error_handling: description of failure scenarios${templateMatchContext}
+Rules:
+- Include 4-8 modules in the flow array with realistic module names for the use case
+- Use "router:RouterModule" for branching, set "routes" array at top level for branches
+- Add error handler modules after modules that might fail (use "builtin:SetError")
+- Increment designer x position by 300 for each sequential module
+- Use Make.com variable syntax: {{moduleId.fieldName}} for data mapping
+${templateContextCapped}`
+      : `You are an expert Zapier automation engineer. Generate a complete, structured Zap definition JSON.
 
-Return ONLY the raw JSON, no markdown fences, no explanation.`;
+The JSON must have this exact shape:
+{
+  "name": "Zap Name",
+  "steps": [
+    {
+      "position": 1,
+      "type": "trigger",
+      "app": "webhook",
+      "action": "catch_hook",
+      "params": {}
+    },
+    {
+      "position": 2,
+      "type": "filter",
+      "condition": "Field A contains Value B",
+      "params": {}
+    },
+    {
+      "position": 3,
+      "type": "action",
+      "app": "google_sheets",
+      "action": "create_spreadsheet_row",
+      "params": { "spreadsheet": "...", "worksheet": "..." }
+    },
+    {
+      "position": 4,
+      "type": "path",
+      "label": "Path A",
+      "condition": "Status equals Active",
+      "steps": [
+        { "position": 1, "type": "action", "app": "slack", "action": "send_channel_message", "params": {} }
+      ]
+    }
+  ]
+}
+
+Rules:
+- Include 3-6 steps total (trigger + filters + actions)
+- Use "filter" type steps where data gating is needed
+- Use "path" type steps for branching logic with nested steps arrays
+- Use standard Zapier app slugs: google_sheets, slack, gmail, hubspot, salesforce, airtable, notion, trello, asana, zendesk, stripe
+- params should contain realistic field names for the given app/action
+${templateContextCapped}`;
 
   // ── 7. Run all 3 AI generations in parallel ──────────────────────────────
   let buildPlanHtml: string;
@@ -343,12 +447,16 @@ Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
       // ── Workflow JSON ────────────────────────────────────────────────────
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 8000,
+        max_tokens: 12000,
         system: workflowSystemPrompt,
         messages: [
           {
             role: 'user',
-            content: `Generate the complete ${ticket.ticket_type} workflow JSON for:\n\n${context}`,
+            content: ticket.ticket_type === 'n8n'
+              ? `Generate the complete n8n workflow definition JSON for this project:\n\n${context}\n\nIMPORTANT: Output only the JSON object that would be saved as a .json file and imported into n8n. Do NOT output n8n runtime expressions like {{ $json }}.`
+              : ticket.ticket_type === 'make'
+              ? `Generate the complete Make.com scenario blueprint JSON for this project:\n\n${context}\n\nIMPORTANT: Output only the JSON object. Use the "flow" array (not "modules"). Follow Make.com module naming: "app:moduleName".`
+              : `Generate the complete Zapier workflow definition JSON for this project:\n\n${context}\n\nIMPORTANT: Output only the JSON object. Use the "steps" array with position, type, app, action, params. Include filter and path steps where appropriate.`,
           },
         ],
       }),
@@ -365,6 +473,27 @@ Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
         : '<html><body><p>Error generating demo</p></body></html>';
 
     workflowJson = workflowMsg.content[0].type === 'text' ? workflowMsg.content[0].text : '{}';
+
+    // If workflow response is suspiciously short (<500 chars), retry once
+    if (workflowJson.trim().length < 500) {
+      console.warn('[generate-build] Workflow JSON too short (' + workflowJson.length + ' chars) — retrying...');
+      const retryMsg = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 12000,
+        system: workflowSystemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: `Generate the complete n8n workflow definition JSON for this project. This is the content of a .json file you would import into n8n via Settings → Import Workflow.\n\n${context}\n\nThe JSON must have a "name" field (string), a "nodes" array (with 6-10 node objects), and a "connections" object. Node objects have id, name, type, typeVersion, position, and parameters fields. Do not use {{ }} runtime expressions as property values — use literal strings or numbers only.`,
+          },
+        ],
+      });
+      const retryText = retryMsg.content[0].type === 'text' ? retryMsg.content[0].text : '{}';
+      if (retryText.trim().length > workflowJson.trim().length) {
+        workflowJson = retryText;
+        console.log('[generate-build] Retry returned', retryText.length, 'chars');
+      }
+    }
 
     console.log('[generate-build] All 3 Claude calls completed in', Date.now() - overallStart, 'ms');
     console.log('[generate-build] Build plan:', buildPlanHtml.length, 'chars');
@@ -388,14 +517,54 @@ Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
 
   // Validate and clean workflow JSON
   let cleanWorkflowJson = workflowJson.trim();
+
+  // Strip markdown fences if present
   const fenceMatch = cleanWorkflowJson.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) cleanWorkflowJson = fenceMatch[1].trim();
 
+  // Extract outermost {...} in case Claude added preamble or explanation text
+  const firstBrace = cleanWorkflowJson.indexOf('{');
+  const lastBrace = cleanWorkflowJson.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    cleanWorkflowJson = cleanWorkflowJson.slice(firstBrace, lastBrace + 1);
+  }
+
   let workflowIsValid = false;
+  let n8nNodeWarnings: string[] = [];
+
   try {
-    JSON.parse(cleanWorkflowJson);
+    const parsed = JSON.parse(cleanWorkflowJson);
     workflowIsValid = true;
     console.log('[generate-build] Workflow JSON is valid');
+
+    // n8n-specific validation: check all node types are valid n8n-nodes-base types
+    if (ticket.ticket_type === 'n8n' && Array.isArray(parsed.nodes)) {
+      const knownN8nBases = new Set([
+        'n8n-nodes-base.webhook', 'n8n-nodes-base.httpRequest', 'n8n-nodes-base.set',
+        'n8n-nodes-base.if', 'n8n-nodes-base.merge', 'n8n-nodes-base.splitInBatches',
+        'n8n-nodes-base.slack', 'n8n-nodes-base.gmail', 'n8n-nodes-base.hubspot',
+        'n8n-nodes-base.salesforce', 'n8n-nodes-base.airtable', 'n8n-nodes-base.notion',
+        'n8n-nodes-base.googleSheets', 'n8n-nodes-base.sendGrid', 'n8n-nodes-base.bambooHr',
+        'n8n-nodes-base.zoom', 'n8n-nodes-base.cron', 'n8n-nodes-base.interval',
+        'n8n-nodes-base.emailSend', 'n8n-nodes-base.code', 'n8n-nodes-base.function',
+        'n8n-nodes-base.functionItem', 'n8n-nodes-base.switch', 'n8n-nodes-base.filter',
+        'n8n-nodes-base.removeDuplicates', 'n8n-nodes-base.sort', 'n8n-nodes-base.limit',
+        'n8n-nodes-base.aggregate', 'n8n-nodes-base.itemLists', 'n8n-nodes-base.noOp',
+        'n8n-nodes-base.stickyNote', 'n8n-nodes-base.start', 'n8n-nodes-base.manualTrigger',
+        'n8n-nodes-base.stripe', 'n8n-nodes-base.twilio', 'n8n-nodes-base.telegram',
+        'n8n-nodes-base.discord', 'n8n-nodes-base.github', 'n8n-nodes-base.gitlab',
+        'n8n-nodes-base.jira', 'n8n-nodes-base.asana', 'n8n-nodes-base.trello',
+        '@n8n/n8n-nodes-langchain.lmChatAnthropic', '@n8n/n8n-nodes-langchain.openAi',
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      n8nNodeWarnings = (parsed.nodes as any[])
+        .filter((n) => n.type && !knownN8nBases.has(n.type) && !n.type.startsWith('n8n-nodes-base.'))
+        .map((n) => `Unknown node type: ${n.type} (node: ${n.name})`);
+
+      if (n8nNodeWarnings.length > 0) {
+        console.warn('[generate-build] n8n node type warnings:', n8nNodeWarnings);
+      }
+    }
   } catch {
     console.warn('[generate-build] Workflow JSON is not valid JSON, wrapping as raw...');
     cleanWorkflowJson = JSON.stringify({
@@ -462,9 +631,11 @@ Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
       metadata: {
         generated_at: new Date().toISOString(),
         chars: cleanWorkflowJson.length,
+        platform: ticket.ticket_type,
         mcp_assisted: ticket.ticket_type === 'n8n' && mcpNodeContext.length > 0,
         valid_json: workflowIsValid,
         template_matched: matchedTemplateName ?? null,
+        n8n_node_warnings: n8nNodeWarnings.length > 0 ? n8nNodeWarnings : undefined,
       },
     },
   ];
@@ -492,6 +663,17 @@ Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
     console.error('[generate-build] Status update error:', statusErr);
   } else {
     console.log('[generate-build] Ticket status → REVIEW_PENDING');
+  }
+
+  // Send build-complete email (best-effort)
+  if (ticket.contact_email) {
+    const html = buildCompleteHtml(ticket);
+    sendEmail({
+      to: ticket.contact_email,
+      subject: `[Manage AI] Your deliverables are ready — ${ticket.project_name ?? ticket.company_name}`,
+      html,
+      ticket_id,
+    }).catch((e) => console.error('[generate-build] Email send failed:', e));
   }
 
   console.log('[generate-build] Done. Total time:', Date.now() - overallStart, 'ms');
