@@ -26,6 +26,8 @@ Example: Module 2 reads from Module 1: {{1.body}}, {{1.headers.content-type}}
 - typeform:watchResponses — Triggers on form submissions
 - calendly:watchInvitees — Triggers on meeting bookings
 - jotform:watchSubmissions — Triggers on form submissions
+- facebook-lead-ads:watchLeads — Triggers on new Facebook lead ad submissions
+- google-forms:watchResponses — Triggers on new Google Form responses
 
 #### Google Suite
 - google-sheets:addRow, updateRow, searchRows, getCell, clearRow, watchRows
@@ -116,7 +118,28 @@ Example: Module 2 reads from Module 1: {{1.body}}, {{1.headers.content-type}}
 9. Router filters go in the mapper: { "filter": { "conditions": [[{ "a": "{{1.field}}", "o": "equal", "b": "value" }]] } }
 10. Iterator input goes in mapper: { "array": "{{1.data}}" }
 11. Aggregator groups by source module: { "source": 3, "value": "{{3.item}}" }
+
+### Common Patterns
+
+**Webhook → Process → Store → Notify**
+gateway:CustomWebHook → json:parseJSON or text-parser:match → google-sheets:addRow or airtable:createRecord → slack:sendMessage or gmail:sendEmail
+
+**Watch Trigger → Filter → Branch (Router) → Multiple Outputs**
+google-sheets:watchRows → flow-control:router (with filter conditions per branch) → Branch A: slack:sendMessage, Branch B: gmail:sendEmail
+
+**Schedule → Fetch → Iterator → Process Each → Aggregator → Summary**
+schedule:interval → http:makeRequest (fetch list) → flow-control:iterator → [process module per item] → flow-control:aggregator → slack:sendMessage (summary)
+
+**Error Handler Pattern**
+Any write/API module → duplicate module or http:makeRequest with metadata.errorHandler=true as fallback → slack:sendMessage (error notification)
+
+**CRM Sync Pattern**
+hubspot:watchContacts → json:transformJSON (map fields) → salesforce:createRecord or pipedrive:createPerson
+
+**AI Processing Pattern**
+webhook:customWebhook → openai:createChatCompletion or anthropic:createMessage → json:parseJSON (extract structured response) → [downstream action]
 `;
+
 
 export const MAKE_BLUEPRINT_TEMPLATE = {
   name: '',

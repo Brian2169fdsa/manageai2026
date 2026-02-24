@@ -35,9 +35,9 @@ interface CountsData {
 const PAGE_SIZE = 48;
 
 const PLATFORM_STYLES = {
-  n8n:    { label: 'n8n',      class: 'bg-orange-100 text-orange-700 border-orange-200' },
-  make:   { label: 'Make.com', class: 'bg-purple-100 text-purple-700 border-purple-200' },
-  zapier: { label: 'Zapier',   class: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
+  n8n:    { label: 'n8n',      color: '#FF6D5A', class: 'bg-orange-100 text-orange-700 border-orange-200' },
+  make:   { label: 'Make.com', color: '#6D00CC', class: 'bg-purple-100 text-purple-700 border-purple-200' },
+  zapier: { label: 'Zapier',   color: '#FF4A00', class: 'bg-orange-50 text-orange-700 border-orange-200' },
 };
 
 const COMPLEXITY_STYLES: Record<string, string> = {
@@ -210,20 +210,31 @@ export default function TemplatesPage() {
       <div className="flex flex-wrap items-center gap-3">
         {/* Platform tabs */}
         <div className="flex items-center rounded-lg border bg-muted/30 p-1 gap-0.5">
-          {(['all', 'n8n', 'make', 'zapier'] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPlatform(p)}
-              className={cn(
-                'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
-                platform === p
-                  ? 'bg-white shadow-sm text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {p === 'all' ? 'All Platforms' : p === 'make' ? 'Make.com' : p.charAt(0).toUpperCase() + p.slice(1)}
-            </button>
-          ))}
+          {(['all', 'n8n', 'make', 'zapier'] as const).map((p) => {
+            const label = p === 'all' ? 'All Platforms' : PLATFORM_STYLES[p]?.label ?? p;
+            const count = p === 'all' ? counts?.total : counts?.platforms?.[p];
+            const dotColor = p !== 'all' ? PLATFORM_STYLES[p]?.color : undefined;
+            return (
+              <button
+                key={p}
+                onClick={() => setPlatform(p)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                  platform === p
+                    ? 'bg-white shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {dotColor && (
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+                )}
+                {label}
+                {count !== undefined && count !== null && (
+                  <span className="text-[10px] tabular-nums opacity-60 ml-0.5">{count.toLocaleString()}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Category */}

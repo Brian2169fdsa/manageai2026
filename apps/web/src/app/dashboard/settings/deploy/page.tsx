@@ -13,13 +13,14 @@ interface MakeForm {
   apiToken: string;
   teamId: string;
   folderId: string;
+  region: string;
 }
 
 type TestStatus = 'idle' | 'testing' | 'ok' | 'fail';
 
 export default function DeployConfigPage() {
   const [n8n, setN8n] = useState<N8nForm>({ instanceUrl: '', apiKey: '' });
-  const [make, setMake] = useState<MakeForm>({ apiToken: '', teamId: '', folderId: '' });
+  const [make, setMake] = useState<MakeForm>({ apiToken: '', teamId: '', folderId: '', region: 'us1' });
   const [n8nStatus, setN8nStatus] = useState<TestStatus>('idle');
   const [makeStatus, setMakeStatus] = useState<TestStatus>('idle');
   const [n8nMsg, setN8nMsg] = useState('');
@@ -50,7 +51,12 @@ export default function DeployConfigPage() {
           setN8n((p) => ({ ...p, instanceUrl: data.n8n.instanceUrl }));
         }
         if (data.make?.teamId) {
-          setMake((p) => ({ ...p, teamId: String(data.make.teamId), folderId: String(data.make.folderId ?? '') }));
+          setMake((p) => ({
+            ...p,
+            teamId: String(data.make.teamId),
+            folderId: String(data.make.folderId ?? ''),
+            region: data.make.region ?? 'us1',
+          }));
         }
       }
     } finally {
@@ -95,7 +101,7 @@ export default function DeployConfigPage() {
       const res = await fetch('/api/deploy/config?platform=make', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: auth },
-        body: JSON.stringify({ apiToken: make.apiToken, teamId: Number(make.teamId) }),
+        body: JSON.stringify({ apiToken: make.apiToken, teamId: Number(make.teamId), region: make.region }),
       });
       const data = await res.json();
       setMakeStatus(data.ok ? 'ok' : 'fail');
@@ -125,6 +131,7 @@ export default function DeployConfigPage() {
           ...(make.apiToken ? { apiToken: make.apiToken } : {}),
           ...(make.teamId ? { teamId: Number(make.teamId) } : {}),
           ...(make.folderId ? { folderId: Number(make.folderId) } : {}),
+          region: make.region || 'us1',
         };
       }
 
@@ -215,6 +222,40 @@ export default function DeployConfigPage() {
             onChange={(v) => setMake((p) => ({ ...p, folderId: v }))}
             hint="Organise scenarios into a folder"
           />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#444', marginBottom: 6 }}>
+            Region
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[
+              { value: 'us1', label: 'US (us1.make.com)' },
+              { value: 'eu1', label: 'EU (eu1.make.com)' },
+              { value: 'eu2', label: 'EU 2 (eu2.make.com)' },
+            ].map((r) => (
+              <button
+                key={r.value}
+                onClick={() => { setMake((p) => ({ ...p, region: r.value })); setMakeStatus('idle'); }}
+                style={{
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  fontWeight: make.region === r.value ? 600 : 400,
+                  background: make.region === r.value ? '#EBF4FF' : '#FAFAFE',
+                  color: make.region === r.value ? '#4A8FD6' : '#666',
+                  border: `1px solid ${make.region === r.value ? '#C5D8F5' : '#E0E0E8'}`,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all 150ms',
+                }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <p style={{ margin: '4px 0 0', fontSize: 11, color: '#999' }}>
+            Select the data centre region for your Make.com account
+          </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
           <button onClick={testMake} disabled={makeStatus === 'testing'} style={testBtnStyle}>

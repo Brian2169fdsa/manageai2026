@@ -167,3 +167,147 @@ ${MAKE_MODULE_REFERENCE}
 == OUTPUT REQUIREMENT ==
 Output ONLY the raw JSON object. No markdown code fences, no preamble, no explanation. First character must be {.${templateContext ? `\n\n${templateContext}` : ''}`;
 }
+
+// ── Build plan addendum ─────────────────────────────────────────────────────
+
+export function getMakeBuildPlanAddendum(): string {
+  return `
+
+=== MAKE.COM-SPECIFIC BUILD PLAN REQUIREMENTS ===
+
+This is a Make.com automation. The build plan must be tailored to Make.com's UI, terminology, and deployment model. Include ALL of the following:
+
+**1. Make.com Account & Plan Requirements**
+Recommend the appropriate Make.com plan (Free/Core/Pro/Teams/Enterprise) based on:
+- Number of scenarios needed
+- Operations per month (Free: 1,000 ops; Core: 10,000; Pro: 10,000+; Teams: 10,000+)
+- Whether scheduled triggers are needed (interval scheduling)
+- Whether data stores or custom apps are used
+Explain the operation cost model: each module execution = 1 operation.
+
+**2. Required App Connections**
+For EACH app used in the scenario, provide:
+- How to create the connection in Make.com (Connections → Create a connection → [App Name])
+- Whether OAuth, API key, or webhook URL is needed
+- Where to find the API key or credentials in the third-party app
+- Any app-specific gotchas (e.g., Google Sheets requires selecting the specific spreadsheet)
+
+**3. Module-by-Module Build Guide**
+For each module in the scenario (matching the workflow JSON), provide:
+- Module name as it appears in Make.com's module picker (e.g., "Google Sheets → Add a Row")
+- Every parameter to configure with the exact value or data mapping
+- How to use Make.com's data mapping panel (click the field → select from previous modules)
+- Expected output fields after running the module
+- How to use "Run Once" to test just this module
+
+**4. Router & Filter Configuration**
+If the scenario uses routers:
+- How to add a router in Make.com (right-click connection → Add Router)
+- How to configure filter conditions on each branch
+- How to set the "fallback" route (the route with no filter)
+- How to reorder routes
+
+**5. Error Handling Setup**
+- How to add error handler routes in Make.com (right-click a module → Add Error Handler)
+- Recommend Break, Resume, Rollback, Commit, or Ignore for each error scenario
+- How to configure the "Break" directive with retry settings
+- How to set up scenario-level error notifications (Scenario Settings → Notifications)
+
+**6. Scenario Scheduling Configuration**
+- How to set the scheduling type (On Demand, Interval, or Specified dates)
+- Recommended interval for this use case
+- How to configure "Max number of cycles" and "Max errors"
+- How to set the data processing mode (Sequential vs Parallel)
+
+**7. Testing Guide**
+- How to use "Run Once" to test the entire scenario
+- How to inspect each module's input/output using the execution inspector
+- How to use the "Run scenario" button with test data
+- How to check the scenario log for errors
+- How to use the "History" tab to review past executions
+
+**8. Operation Usage & Cost Estimate**
+- Operations per scenario run (count each module execution)
+- Estimated monthly trigger volume for this use case
+- Total estimated monthly operations
+- Whether that fits within the recommended plan's operation limit
+- Data transfer considerations (large file operations cost extra)
+
+**9. Go-Live Checklist (Make.com-specific)**
+Include as interactive checklist items:
+- [ ] All required app connections created and tested in Make.com
+- [ ] Scenario built with all modules matching the blueprint
+- [ ] Router filter conditions configured and verified
+- [ ] Error handlers attached to critical modules
+- [ ] "Run Once" test completed successfully with real data
+- [ ] Scenario scheduling configured (interval, max cycles, max errors)
+- [ ] Scenario-level error notifications enabled
+- [ ] Scenario activated (toggle ON)
+- [ ] First scheduled run verified in scenario History
+- [ ] Operation usage within plan limits
+
+**10. Troubleshooting Guide (Common Make.com Errors)**
+Include solutions for:
+- "Operation limit reached" — upgrade plan or optimize scenario
+- "Connection expired" — re-authenticate the app connection
+- "JSON parsing error" — check input format, add json:parseJSON module
+- "Webhook timeout (5 min limit)" — optimize downstream modules or use async pattern
+- "Data store record not found" — verify record exists, check search criteria
+- "Rate limit exceeded" — add flow-control:sleep between API calls
+- "Bundle size too large" — paginate or use iterator to process in batches
+
+In the Build Steps tab, label each step card with the Make.com module name format: "Module 1: [app:action]", "Module 2: [app:action]", etc. Each step card must show the Make.com module type badge and realistic parameter configurations.`;
+}
+
+// ── Demo addendum ───────────────────────────────────────────────────────────
+
+export function getMakeDemoAddendum(): string {
+  return `
+
+=== MAKE.COM-SPECIFIC DEMO REQUIREMENTS ===
+
+This is a Make.com automation. The demo must reflect Make.com's visual identity and workflow execution model:
+
+**How It Works Tab:**
+Show the scenario flow as Make.com displays it — a horizontal chain of connected modules:
+- Module 1 (trigger) uses a purple/blue circle with the app icon
+- Each subsequent module is connected by a line/arrow
+- Router modules show branching paths splitting downward
+- Each module card shows: module number, app name, action name, one-line description
+- Use Make.com's color scheme: purple (#7C5CFC) for the scenario canvas, module cards with white backgrounds
+- Show data mapping arrows between modules ({{1.field}} → Module 2)
+
+**Live Demo Tab:**
+The simulation must show a Make.com-style execution:
+- A "Run Scenario" button (like Make.com's "Run Once")
+- Each module processes in sequence with 800ms delay:
+  - Show the module "processing" state (spinning indicator)
+  - Show the module "complete" state (green checkmark)
+  - Display realistic input/output data for each module
+  - If it's a Router, show which branch was taken and why
+  - If it's an Iterator, show "Processing item 1 of N..."
+- The final state shows:
+  - All modules green with execution time per module
+  - Total operations count: "This run used X operations"
+  - Estimated monthly operations based on trigger frequency
+
+**Architecture Tab:**
+Include a "Make.com Plan Required" callout showing:
+- Recommended plan name and monthly operation limit
+- Estimated operations per run
+- Whether data stores or custom apps are needed
+- List all app connections required with their authentication type (OAuth / API Key / Webhook)
+
+**ROI Calculator Tab:**
+Include a Make.com-specific row: "Operations Cost" showing the monthly operations and whether they fit within the plan or require an upgrade. Factor in the Make.com subscription cost vs manual labor cost.
+
+**Next Steps Tab:**
+Show Make.com-specific implementation steps:
+1. "Sign up / Log in to Make.com" — with recommended plan
+2. "Create App Connections" — connect all required apps
+3. "Import Scenario Blueprint" — paste or import the generated JSON
+4. "Configure Credentials" — replace {{CONNECTION_*}} placeholders with real connections
+5. "Test with Run Once" — verify the scenario works end-to-end
+6. "Activate Scheduling" — set the trigger interval and enable the scenario
+The CTA button should say "Import Blueprint to Make.com" not "Schedule Kickoff Call".`;
+}

@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
 
     // Fallback to environment variables for backward compatibility
     const n8nConfig = (deployConfig.n8n as { instanceUrl?: string; apiKey?: string }) ?? {};
-    const makeConfig = (deployConfig.make as { apiToken?: string; teamId?: number; folderId?: number }) ?? {};
+    const makeConfig = (deployConfig.make as { apiToken?: string; teamId?: number; folderId?: number; region?: string }) ?? {};
     const zapierConfig = { mode: 'manual' as const };
 
     // ── 5. Deploy by platform ────────────────────────────────────────────────
@@ -111,6 +111,7 @@ export async function POST(req: NextRequest) {
         apiToken: makeConfig.apiToken ?? process.env.MAKE_API_TOKEN ?? '',
         teamId: Number(makeConfig.teamId ?? process.env.MAKE_TEAM_ID ?? 0),
         folderId: makeConfig.folderId ? Number(makeConfig.folderId) : undefined,
+        region: (makeConfig.region as 'us1' | 'eu1' | 'eu2') ?? (process.env.MAKE_REGION as 'us1' | 'eu1' | 'eu2') ?? 'us1',
       });
     } else if (platform === 'zapier') {
       deployResult = await deployToZapier(workflowJson, zapierConfig);

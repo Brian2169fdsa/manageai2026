@@ -12,7 +12,7 @@ const supabase = createClient(
 
 interface DeployConfigs {
   n8n?: { instanceUrl?: string; apiKey?: string };
-  make?: { apiToken?: string; teamId?: number; folderId?: number };
+  make?: { apiToken?: string; teamId?: number; folderId?: number; region?: string };
   zapier?: { mode?: string };
 }
 
@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
       make: {
         teamId: deploy.make?.teamId ?? null,
         folderId: deploy.make?.folderId ?? null,
+        region: deploy.make?.region ?? 'us1',
         configured: !!(deploy.make?.apiToken && deploy.make?.teamId),
       },
       zapier: {
@@ -125,8 +126,8 @@ export async function PUT(req: NextRequest) {
     }
 
     if (platform === 'make') {
-      const { apiToken, teamId } = body as { apiToken: string; teamId: number };
-      const result = await testMakeConnection({ apiToken, teamId });
+      const { apiToken, teamId, region } = body as { apiToken: string; teamId: number; region?: string };
+      const result = await testMakeConnection({ apiToken, teamId, region: (region as 'us1' | 'eu1' | 'eu2') ?? 'us1' });
       return NextResponse.json(result);
     }
 

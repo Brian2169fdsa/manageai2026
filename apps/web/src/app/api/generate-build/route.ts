@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, buildCompleteHtml } from '@/lib/email/notifications';
-import { buildMakeComPrompt } from '@/lib/platforms/make/prompt-builder';
+import { buildMakeComPrompt, getMakeBuildPlanAddendum, getMakeDemoAddendum } from '@/lib/platforms/make/prompt-builder';
 import {
   ZAPIER_WORKFLOW_SYSTEM,
   buildZapierWorkflowUserMessage,
@@ -386,7 +386,7 @@ All text: 11px #8890A0
         messages: [
           {
             role: 'user',
-            content: `Generate the complete build plan for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierBuildPlanAddendum() : ''}`,
+            content: `Generate the complete build plan for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierBuildPlanAddendum() : ticket.ticket_type === 'make' ? getMakeBuildPlanAddendum() : ''}`,
           },
         ],
       }),
@@ -480,7 +480,7 @@ The Live Demo tab must be genuinely interactive:
         messages: [
           {
             role: 'user',
-            content: `Generate the interactive solution demo for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierDemoAddendum() : ''}`,
+            content: `Generate the interactive solution demo for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierDemoAddendum() : ticket.ticket_type === 'make' ? getMakeDemoAddendum() : ''}`,
           },
         ],
       }),

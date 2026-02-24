@@ -2,7 +2,7 @@ export interface MakeConfig {
   apiToken: string;
   teamId: number;
   folderId?: number;
-  region?: string; // 'us1' | 'eu1' | 'us2' — defaults to 'us1'
+  region?: 'us1' | 'eu1' | 'eu2'; // defaults to 'us1'
 }
 
 export interface DeployResult {
@@ -13,9 +13,11 @@ export interface DeployResult {
   error?: string;
 }
 
+const VALID_REGIONS = new Set(['us1', 'eu1', 'eu2']);
+
 /**
  * Deploys a Make.com blueprint to a team via the Make.com REST API.
- * POST https://{region}.make.com/api/v2/scenarios
+ * POST https://{region}.make.com/api/v2/scenarios?teamId={teamId}
  */
 export async function deployToMake(
   blueprintJson: Record<string, unknown>,
@@ -26,20 +28,22 @@ export async function deployToMake(
   }
 
   const region = config.region ?? 'us1';
-  const baseUrl = `https://${region}.make.com/api/v2`;
+  if (!VALID_REGIONS.has(region)) {
+    return { success: false, error: `Invalid Make.com region "${region}". Must be one of: us1, eu1, eu2` };
+  }
+
+  const base = `https://${region}.make.com`;
 
   try {
     const body: Record<string, unknown> = {
-      blueprint: blueprintJson,
-      teamId: config.teamId,
-      scheduling: { type: 'indefinitely', interval: 15 },
+      blueprint: JSON.stringify(blueprintJson),
     };
 
     if (config.folderId) {
       body.folderId = config.folderId;
     }
 
-    const res = await fetch(`${baseUrl}/scenarios`, {
+    const res = await fetch(`${base}/api/v2/scenarios?teamId=${config.teamId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -63,18 +67,21 @@ export async function deployToMake(
     return {
       success: true,
       scenarioId,
-      url: `https://www.make.com/en/scenarios/${scenarioId}`,
+      url: `${base}/scenarios/${scenarioId}`,
     };
   } catch (err) {
     return { success: false, error: (err as Error).message };
   }
 }
 
-/** Test connectivity to Make.com API */
+/** Test connectivity to Make.com API by listing scenarios (limit 1) */
 export async function testMakeConnection(config: MakeConfig): Promise<{ ok: boolean; message: string }> {
   try {
     const region = config.region ?? 'us1';
-    const res = await fetch(`https://${region}.make.com/api/v2/teams/${config.teamId}`, {
+    if (!VALID_REGIONS.has(region)) {
+      return { ok: false, message: `Invalid region "${region}"` };
+    }
+    const res = await fetch(`https://${region}.make.com/api/v2/scenarios?teamId=${config.teamId}&pg[limit]=1`, {
       headers: { Authorization: `Token ${config.apiToken}` },
     });
     if (res.ok) return { ok: true, message: 'Connection successful' };
