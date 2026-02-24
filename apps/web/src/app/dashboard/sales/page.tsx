@@ -60,7 +60,7 @@ export default function SalesPage() {
         })
         .catch(() => {}),
 
-      fetch('/api/pipedrive/deals?status=open&limit=50')
+      fetch('/api/pipedrive/deals?status=open')
         .then((r) => r.json())
         .then((data) => setDeals(data.deals ?? []))
         .catch(() => {}),

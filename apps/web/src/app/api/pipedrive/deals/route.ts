@@ -93,20 +93,22 @@ const SAMPLE_DEALS = [
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status') as 'open' | 'won' | 'lost' | null;
-  const limit = Number(searchParams.get('limit') ?? 50);
 
   if (!isConfigured()) {
     const filtered = status ? SAMPLE_DEALS.filter((d) => d.status === status) : SAMPLE_DEALS;
-    return NextResponse.json({ deals: filtered.slice(0, limit), demo_mode: true });
+    return NextResponse.json({ deals: filtered, demo_mode: true });
   }
 
-  const result = await getDeals({ status: status ?? 'open', limit });
+  // Fetch up to 500 deals (Pipedrive max per request) to avoid missing deals
+  const result = await getDeals({ status: status ?? 'open', limit: 500 });
 
   if (!result.success) {
     return NextResponse.json({ error: result.error, deals: [], demo_mode: false }, { status: 502 });
   }
 
   // Normalise the Pipedrive deal shape
+  // - person_name and org_name are plain strings in the v1 API
+  // - owner lives in user_id.name (not a top-level owner_name field)
   const deals = (Array.isArray(result.data) ? result.data : []).map((d: Record<string, unknown>) => ({
     id: d.id,
     title: d.title,
@@ -114,11 +116,11 @@ export async function GET(req: NextRequest) {
     value: d.value,
     currency: d.currency,
     stage_id: d.stage_id,
-    stage_name: (d.stage_id_name as string) ?? '',
+    stage_name: '',
     expected_close_date: d.expected_close_date,
-    person_name: (d.person_name as { name?: string })?.name ?? (d.person_name as string) ?? '',
-    org_name: (d.org_name as { name?: string })?.name ?? (d.org_name as string) ?? '',
-    owner_name: (d.owner_name as string) ?? '',
+    person_name: (d.person_name as string) ?? '',
+    org_name: (d.org_name as string) ?? '',
+    owner_name: (d.user_id as { name?: string })?.name ?? '',
     pipeline_id: d.pipeline_id,
   }));
 
