@@ -4,7 +4,8 @@ import { AgentTool } from '../types';
 export const communicationTools: AgentTool[] = [
   {
     name: 'sendEmail',
-    description: 'Draft and send an email. Currently logs the intent and returns a mock confirmation.',
+    description:
+      'Send a real email to the specified recipient. Include a clear subject line and professional body text. The email will be sent immediately via Resend. If no API key is configured, it logs the intent instead.',
     input_schema: {
       type: 'object',
       properties: {
@@ -18,26 +19,77 @@ export const communicationTools: AgentTool[] = [
         },
         body: {
           type: 'string',
-          description: 'Email body text (plain text or simple HTML)',
+          description: 'Email body text. Use \\n for line breaks. Write as professional plain text.',
         },
       },
       required: ['to', 'subject', 'body'],
     },
-    execute: async ({ to, subject, body }: any, _supabase: any) => {
-      const start = Date.now();
-      console.log(`[tool:sendEmail] Intent: to=${to}, subject="${subject}", body length=${body.length}`);
-      // Mock implementation — replace with Resend/SendGrid when email infra is ready
-      const result = {
+    execute: async ({ to, subject, body }: any, supabase: any) => {
+      const startTime = Date.now();
+      console.log(`[tool:sendEmail] to=${to}, subject="${subject}", body=${body.length} chars`);
+
+      if (process.env.RESEND_API_KEY) {
+        try {
+          const { Resend } = await import('resend');
+          const resend = new Resend(process.env.RESEND_API_KEY);
+
+          const htmlBody = `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #1A1A2E; padding: 20px 24px; border-radius: 8px 8px 0 0;">
+                <h2 style="color: white; margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">MANAGE AI</h2>
+              </div>
+              <div style="padding: 28px 24px; background: #ffffff; border: 1px solid #E8E8F0; border-top: none; border-radius: 0 0 8px 8px;">
+                ${body.replace(/\n/g, '<br/>')}
+              </div>
+              <div style="padding: 14px; text-align: center; font-size: 12px; color: #999;">
+                Sent by ManageAI Platform
+              </div>
+            </div>
+          `;
+
+          const { data, error } = await resend.emails.send({
+            from: process.env.EMAIL_FROM ?? 'Manage AI <noreply@manageai.app>',
+            to,
+            subject,
+            html: htmlBody,
+          });
+
+          if (error) {
+            console.error('[tool:sendEmail] Resend error:', error);
+            return { success: false, error: error.message, duration_ms: Date.now() - startTime };
+          }
+
+          // Log to DB (best-effort)
+          try {
+            await supabase.from('email_notifications').insert({
+              to_email: to,
+              subject,
+              status: 'sent',
+              sent_at: new Date().toISOString(),
+            });
+          } catch { /* table may not have all columns yet */ }
+
+          console.log(`[tool:sendEmail] Sent via Resend in ${Date.now() - startTime}ms, id=${data?.id}`);
+          return {
+            success: true,
+            message: `Email sent to ${to}`,
+            email_id: data?.id,
+            duration_ms: Date.now() - startTime,
+          };
+        } catch (err: any) {
+          console.error('[tool:sendEmail] Exception:', err.message);
+          return { success: false, error: err.message, duration_ms: Date.now() - startTime };
+        }
+      }
+
+      // Demo mode — no API key
+      console.log(`[tool:sendEmail] DEMO MODE — no RESEND_API_KEY`);
+      return {
         success: true,
-        message_id: `mock-${Date.now()}`,
-        to,
-        subject,
-        sent_at: new Date().toISOString(),
-        note: 'Email logged (live sending not yet configured)',
-        duration_ms: Date.now() - start,
+        message: `[DEMO MODE] Would send email to ${to}: "${subject}"`,
+        demo_mode: true,
+        duration_ms: Date.now() - startTime,
       };
-      console.log(`[tool:sendEmail] Mock sent in ${result.duration_ms}ms`);
-      return result;
     },
   },
 
@@ -115,44 +167,6 @@ export const communicationTools: AgentTool[] = [
         duration_ms: Date.now() - start,
       };
       console.log(`[tool:createCalendarEvent] Mock created in ${result.duration_ms}ms`);
-      return result;
-    },
-  },
-
-  {
-    name: 'updatePipedrive',
-    description: 'Update a deal or contact in Pipedrive CRM. Currently logs the intent and returns a mock confirmation.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        deal_id: {
-          type: 'string',
-          description: 'Pipedrive deal ID to update',
-        },
-        stage: {
-          type: 'string',
-          description: 'New pipeline stage for the deal',
-        },
-        note: {
-          type: 'string',
-          description: 'Note to add to the deal',
-        },
-      },
-      required: ['deal_id'],
-    },
-    execute: async ({ deal_id, stage, note }: any, _supabase: any) => {
-      const start = Date.now();
-      console.log(`[tool:updatePipedrive] Intent: deal_id=${deal_id}, stage=${stage}, note="${(note ?? '').slice(0, 80)}"`);
-      const result = {
-        success: true,
-        deal_id,
-        stage,
-        note,
-        updated_at: new Date().toISOString(),
-        note_msg: 'Pipedrive update logged (CRM integration not yet configured)',
-        duration_ms: Date.now() - start,
-      };
-      console.log(`[tool:updatePipedrive] Mock updated in ${result.duration_ms}ms`);
       return result;
     },
   },

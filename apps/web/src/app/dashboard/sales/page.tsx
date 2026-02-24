@@ -4,105 +4,137 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase/client';
 import { Ticket } from '@/types';
 import {
-  TrendingUp, DollarSign, Users, Percent, Target, MoveRight,
+  TrendingUp, DollarSign, Users, Percent, Target, MoveRight, AlertCircle, Settings,
 } from 'lucide-react';
 import { AgentButton } from '@/components/agents/AgentButton';
 import { agentConfigs } from '@/lib/agents/configs';
 
+interface PipedriveDeal {
+  id: number;
+  title: string;
+  status: string;
+  value: number;
+  currency: string;
+  stage_id: number;
+  stage_name: string;
+  expected_close_date: string | null;
+  person_name: string;
+  org_name: string;
+  owner_name: string;
+  pipeline_id: number;
+}
+
+interface PipelineStage {
+  id: number;
+  name: string;
+  order_nr?: number;
+  order?: number;
+  pipeline_id: number;
+}
+
 type KanbanColumn = {
-  id: string;
-  label: string;
-  color: string;
-  dot: string;
-  tickets: Ticket[];
+  stage: PipelineStage;
+  deals: PipedriveDeal[];
 };
 
 export default function SalesPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [deals, setDeals] = useState<PipedriveDeal[]>([]);
+  const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [demoMode, setDemoMode] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from('tickets')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setTickets((data as Ticket[]) ?? []);
-        setLoading(false);
-      });
+    Promise.all([
+      supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .then(({ data }) => setTickets((data as Ticket[]) ?? [])),
+
+      fetch('/api/pipedrive/pipeline')
+        .then((r) => r.json())
+        .then((data) => {
+          setStages(data.stages ?? []);
+          setDemoMode(!!data.demo_mode);
+        })
+        .catch(() => {}),
+
+      fetch('/api/pipedrive/deals?status=open&limit=50')
+        .then((r) => r.json())
+        .then((data) => setDeals(data.deals ?? []))
+        .catch(() => {}),
+    ]).finally(() => setLoading(false));
   }, []);
 
-  const total = tickets.length;
-  const inReview = tickets.filter((t) => ['REVIEW_PENDING', 'APPROVED'].includes(t.status)).length;
-  const deployed = tickets.filter((t) => t.status === 'DEPLOYED').length;
-  const conversionRate = total > 0 ? Math.round((deployed / total) * 100) : 0;
-  const avgDeal = 6250;
+  // ── KPIs ─────────────────────────────────────────────────────────────────
+  const openDeals = deals.filter((d) => d.status === 'open');
+  const wonDeals = deals.filter((d) => d.status === 'won');
+  const lostDeals = deals.filter((d) => d.status === 'lost');
+
+  const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.value ?? 0), 0);
+  const wonValue = wonDeals.reduce((sum, d) => sum + Number(d.value ?? 0), 0);
+  const winRate = wonDeals.length + lostDeals.length > 0
+    ? Math.round((wonDeals.length / (wonDeals.length + lostDeals.length)) * 100)
+    : 0;
+  const avgDealSize = wonDeals.length > 0 ? Math.round(wonValue / wonDeals.length) : 0;
+
+  const thisMonth = new Date(); thisMonth.setDate(1);
+  const newLeads = openDeals.length > 0
+    ? openDeals.length
+    : tickets.filter((t) => t.status === 'SUBMITTED' && new Date(t.created_at) >= thisMonth).length;
 
   const kpis = [
     {
-      label: 'New Leads',
-      value: loading ? '–' : tickets.filter((t) => t.status === 'SUBMITTED').length + 12,
-      icon: Users,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-      sub: 'This month',
-    },
-    {
       label: 'Pipeline Value',
-      value: loading ? '–' : `$${((total * avgDeal) / 1000).toFixed(0)}k`,
+      value: loading ? '–' : pipelineValue > 0 ? `$${(pipelineValue / 1000).toFixed(0)}k` : '–',
       icon: DollarSign,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
-      sub: `${total} opportunities`,
+      sub: `${openDeals.length} open deals`,
     },
     {
-      label: 'Conversion Rate',
-      value: loading ? '–' : `${Math.max(conversionRate, 24)}%`,
+      label: 'New Leads',
+      value: loading ? '–' : newLeads,
+      icon: Users,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      sub: 'Active opportunities',
+    },
+    {
+      label: 'Win Rate',
+      value: loading ? '–' : wonDeals.length + lostDeals.length > 0 ? `${winRate}%` : '–',
       icon: Percent,
       color: 'text-purple-600',
       bg: 'bg-purple-50',
-      sub: `${deployed} closed won`,
+      sub: `${wonDeals.length} closed won`,
     },
     {
       label: 'Avg Deal Size',
-      value: loading ? '–' : `$${avgDeal.toLocaleString()}`,
+      value: loading ? '–' : avgDealSize > 0 ? `$${avgDealSize.toLocaleString()}` : '–',
       icon: Target,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
-      sub: 'Per automation build',
+      sub: 'Per closed deal',
     },
   ];
 
-  // Kanban columns — map ticket statuses to pipeline stages
-  const columns: KanbanColumn[] = [
-    {
-      id: 'lead',
-      label: 'Lead',
-      color: 'border-slate-200',
-      dot: 'bg-slate-400',
-      tickets: tickets.filter((t) => t.status === 'SUBMITTED'),
-    },
-    {
-      id: 'qualified',
-      label: 'Qualified',
-      color: 'border-blue-200',
-      dot: 'bg-blue-500',
-      tickets: tickets.filter((t) => ['CONTEXT_PENDING', 'ANALYZING', 'QUESTIONS_PENDING'].includes(t.status)),
-    },
-    {
-      id: 'proposal',
-      label: 'Proposal',
-      color: 'border-amber-200',
-      dot: 'bg-amber-500',
-      tickets: tickets.filter((t) => ['BUILDING', 'REVIEW_PENDING'].includes(t.status)),
-    },
-    {
-      id: 'won',
-      label: 'Closed Won',
-      color: 'border-emerald-200',
-      dot: 'bg-emerald-500',
-      tickets: tickets.filter((t) => ['APPROVED', 'DEPLOYED'].includes(t.status)),
-    },
+  // ── Kanban: group Pipedrive deals by stage ────────────────────────────────
+  const activeStages = stages.length > 0 ? stages : FALLBACK_STAGES;
+  const kanbanCols: KanbanColumn[] = activeStages
+    .slice()
+    .sort((a, b) => (a.order_nr ?? a.order ?? 0) - (b.order_nr ?? b.order ?? 0))
+    .map((stage) => ({
+      stage,
+      deals: openDeals.filter((d) => d.stage_id === stage.id),
+    }));
+
+  const palette = [
+    { border: 'border-slate-200', dot: 'bg-slate-400' },
+    { border: 'border-blue-200', dot: 'bg-blue-500' },
+    { border: 'border-amber-200', dot: 'bg-amber-500' },
+    { border: 'border-violet-200', dot: 'bg-violet-500' },
+    { border: 'border-emerald-200', dot: 'bg-emerald-500' },
   ];
 
   return (
@@ -115,10 +147,24 @@ export default function SalesPage() {
             <h1 className="text-2xl font-bold">Sales Dashboard</h1>
           </div>
           <p className="text-muted-foreground text-sm mt-1">
-            Lead pipeline, opportunities, and deal tracking
+            Live Pipedrive pipeline, opportunities, and deal tracking
           </p>
         </div>
       </div>
+
+      {/* Demo mode banner */}
+      {demoMode && !loading && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+          <AlertCircle size={16} className="shrink-0 text-amber-600" />
+          <span>Showing sample data — connect Pipedrive to see real deal data.</span>
+          <a
+            href="/dashboard/settings/deploy"
+            className="ml-auto flex items-center gap-1 text-amber-700 font-semibold hover:underline whitespace-nowrap"
+          >
+            <Settings size={13} /> Settings
+          </a>
+        </div>
+      )}
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -144,58 +190,90 @@ export default function SalesPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Lead Pipeline
+            Live Pipeline {demoMode ? '(Sample Data)' : '· Pipedrive'}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="grid grid-cols-4 gap-3">
-              {[...Array(4)].map((_, i) => <div key={i} className="h-40 bg-muted animate-pulse rounded-lg" />)}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {columns.map((col) => (
-                <div key={col.id} className={`rounded-xl border-2 ${col.color} bg-muted/20 p-3`}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className={`w-2 h-2 rounded-full ${col.dot}`} />
-                    <span className="text-xs font-semibold uppercase tracking-wide">{col.label}</span>
-                    <span className="ml-auto text-xs font-bold text-muted-foreground">{col.tickets.length}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {col.tickets.slice(0, 4).map((t) => (
-                      <div key={t.id} className="bg-white rounded-lg border border-muted p-2.5 text-xs shadow-sm">
-                        <div className="font-medium truncate">{t.project_name || 'Untitled'}</div>
-                        <div className="text-muted-foreground mt-0.5 truncate">{t.company_name}</div>
-                        <div className="flex items-center justify-between mt-1.5">
-                          <span className="text-[10px] text-muted-foreground">{t.ticket_type}</span>
-                          <span className="text-[10px] font-semibold text-blue-600">
-                            ${(t.priority === 'critical' ? 15 : t.priority === 'high' ? 8 : t.priority === 'medium' ? 4 : 1.5)}k
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {col.tickets.length === 0 && (
-                      <div className="py-4 text-center text-[11px] text-muted-foreground">Empty</div>
-                    )}
-                    {col.tickets.length > 4 && (
-                      <div className="text-center text-[10px] text-muted-foreground pt-1">
-                        +{col.tickets.length - 4} more
-                      </div>
-                    )}
-                  </div>
-                </div>
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-40 bg-muted animate-pulse rounded-lg" />
               ))}
             </div>
+          ) : (
+            <div
+              className="grid gap-3"
+              style={{
+                gridTemplateColumns: `repeat(${Math.min(kanbanCols.length, 5)}, minmax(0, 1fr))`,
+              }}
+            >
+              {kanbanCols.map((col, i) => {
+                const colors = palette[i % palette.length];
+                return (
+                  <div key={col.stage.id} className={`rounded-xl border-2 ${colors.border} bg-muted/20 p-3`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${colors.dot}`} />
+                      <span className="text-xs font-semibold uppercase tracking-wide truncate">
+                        {col.stage.name}
+                      </span>
+                      <span className="ml-auto text-xs font-bold text-muted-foreground shrink-0">
+                        {col.deals.length}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {col.deals.slice(0, 5).map((deal) => (
+                        <div
+                          key={deal.id}
+                          className="bg-white rounded-lg border border-muted p-2.5 text-xs shadow-sm"
+                        >
+                          <div className="font-medium truncate">{deal.title}</div>
+                          <div className="text-muted-foreground mt-0.5 truncate">
+                            {deal.org_name || deal.person_name || '—'}
+                          </div>
+                          <div className="flex items-center justify-between mt-1.5">
+                            {deal.expected_close_date && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(deal.expected_close_date).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                })}
+                              </span>
+                            )}
+                            {deal.value > 0 && (
+                              <span className="text-[10px] font-semibold text-blue-600 ml-auto">
+                                ${Number(deal.value).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {col.deals.length === 0 && (
+                        <div className="py-4 text-center text-[11px] text-muted-foreground">
+                          Empty
+                        </div>
+                      )}
+                      {col.deals.length > 5 && (
+                        <div className="text-center text-[10px] text-muted-foreground pt-1">
+                          +{col.deals.length - 5} more
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
-          {/* Pipeline flow indicators */}
-          <div className="flex items-center justify-center gap-2 mt-4 text-xs text-muted-foreground">
-            <span>Lead</span>
-            <MoveRight size={12} />
-            <span>Qualified</span>
-            <MoveRight size={12} />
-            <span>Proposal</span>
-            <MoveRight size={12} />
-            <span className="text-emerald-600 font-medium">Closed Won</span>
+
+          {/* Pipeline flow indicator */}
+          <div className="flex items-center justify-center gap-2 mt-4 text-xs text-muted-foreground flex-wrap">
+            {kanbanCols.map((col, i) => (
+              <span key={col.stage.id} className="flex items-center gap-2">
+                {i > 0 && <MoveRight size={12} />}
+                <span className={i === kanbanCols.length - 1 ? 'text-emerald-600 font-medium' : ''}>
+                  {col.stage.name}
+                </span>
+              </span>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -204,3 +282,12 @@ export default function SalesPage() {
     </div>
   );
 }
+
+// Fallback stage structure when Pipedrive not connected
+const FALLBACK_STAGES: PipelineStage[] = [
+  { id: 1, name: 'Lead', order_nr: 1, pipeline_id: 1 },
+  { id: 2, name: 'Qualified', order_nr: 2, pipeline_id: 1 },
+  { id: 3, name: 'Proposal', order_nr: 3, pipeline_id: 1 },
+  { id: 4, name: 'Negotiation', order_nr: 4, pipeline_id: 1 },
+  { id: 5, name: 'Closed Won', order_nr: 5, pipeline_id: 1 },
+];
