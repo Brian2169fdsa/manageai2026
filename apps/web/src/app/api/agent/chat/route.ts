@@ -6,13 +6,7 @@ import { getAgentConfig } from '@/lib/agents/configs';
 import { AgentTool, ToolEvent } from '@/lib/agents/types';
 
 export const maxDuration = 120;
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+export const dynamic = 'force-dynamic';
 
 /** Convert our AgentTool to Anthropic's tool format */
 function toClaudeTool(tool: AgentTool): Anthropic.Tool {
@@ -25,6 +19,7 @@ function toClaudeTool(tool: AgentTool): Anthropic.Tool {
 
 /** Save conversation to DB (best-effort — don't fail if table doesn't exist) */
 async function saveConversation(
+  supabase: any,
   department: string,
   userMessage: string,
   assistantMessage: string,
@@ -45,6 +40,7 @@ async function saveConversation(
 
 /** Log a tool execution (best-effort) */
 async function logToolExecution(
+  supabase: any,
   department: string,
   toolName: string,
   input: any,
@@ -66,6 +62,12 @@ async function logToolExecution(
 }
 
 export async function POST(req: NextRequest) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
   let body: any;
   try {
     body = await req.json();
@@ -174,7 +176,7 @@ export async function POST(req: NextRequest) {
           toolEvents.push(event);
 
           // Fire-and-forget logging
-          logToolExecution(department, block.name, block.input, result, duration);
+          logToolExecution(supabase, department, block.name, block.input, result, duration);
 
           console.log(`[agent:${department}] Tool ${block.name} completed in ${duration}ms`);
 
@@ -213,7 +215,7 @@ export async function POST(req: NextRequest) {
   console.log(`[agent:${department}] Done. ${toolEvents.length} tools executed, message length: ${finalMessage.length}`);
 
   // Save conversation (best-effort)
-  saveConversation(department, userMessage, finalMessage, toolEvents);
+  saveConversation(supabase, department, userMessage, finalMessage, toolEvents);
 
   return NextResponse.json({
     message: finalMessage,
