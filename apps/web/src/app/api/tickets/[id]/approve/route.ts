@@ -61,7 +61,7 @@ export async function POST(
     const newStatus = ACTION_STATUS_MAP[action];
     const previousStatus = ticket.status;
 
-    // Create approval record
+    // Create approval record (best-effort — table may not exist yet)
     const { data: approval, error: approvalError } = await supabase
       .from('ticket_approvals')
       .insert({
@@ -75,22 +75,15 @@ export async function POST(
 
     if (approvalError) {
       console.warn('[approve] Could not insert ticket_approvals row:', approvalError.message);
-      // Non-fatal — proceed even if the table doesn't exist yet
     }
 
-    // Update ticket status
-    const updatePayload: Record<string, unknown> = {
-      status: newStatus,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (action === 'approve') {
-      updatePayload.approved_at = new Date().toISOString();
-    }
-
+    // Update ticket status — only use columns that exist in the tickets table
     const { error: updateError } = await supabase
       .from('tickets')
-      .update(updatePayload)
+      .update({
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', ticketId);
 
     if (updateError) {
