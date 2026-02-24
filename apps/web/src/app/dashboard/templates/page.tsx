@@ -4,9 +4,10 @@ import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Search, Zap, BookOpen, ChevronLeft, ChevronRight,
-  SlidersHorizontal, X, Download, ExternalLink, Filter,
+  SlidersHorizontal, X, Download, ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -55,7 +56,6 @@ export default function TemplatesPage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [search,     setSearch]     = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
 
   // ── Data state ────────────────────────────────────────────────────────────
   const [templates,  setTemplates]  = useState<Template[]>([]);
@@ -67,6 +67,9 @@ export default function TemplatesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [showJsonPreview, setShowJsonPreview] = useState(false);
   const [usingStatic, setUsingStatic] = useState(false);
+
+  // Build category options from counts data
+  const categoryOptions = counts ? ['All', ...counts.categories.map((c) => c.name)] : ['All'];
 
   // Debounce search
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -185,299 +188,184 @@ export default function TemplatesPage() {
   const hasFilters = platform !== 'all' || category !== '' || complexity !== '' || selectedTags.length > 0 || debouncedSearch !== '';
 
   return (
-    <div className="flex gap-0 max-w-[1400px] min-h-[calc(100vh-4rem)] -m-6">
-      {/* ── Sidebar ───────────────────────────────────────────────────────── */}
-      <aside className={cn(
-        'hidden lg:flex flex-col w-56 shrink-0 border-r border-muted/60 bg-background overflow-y-auto',
-        'sticky top-0 h-[calc(100vh-4rem)]'
-      )}>
-        <div className="p-4 space-y-5">
-          {/* Platform */}
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Platform</div>
-            <div className="space-y-0.5">
-              {(['all', 'n8n', 'make', 'zapier'] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPlatform(p)}
-                  className={cn(
-                    'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors',
-                    platform === p
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-muted-foreground hover:bg-muted/40'
-                  )}
-                >
-                  <span>{p === 'all' ? 'All Platforms' : p === 'make' ? 'Make.com' : p.charAt(0).toUpperCase() + p.slice(1)}</span>
-                  {counts && (
-                    <span className="text-[10px] text-muted-foreground tabular-nums">
-                      {p === 'all' ? counts.total.toLocaleString() : (counts.platforms[p] ?? 0).toLocaleString()}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Complexity */}
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Complexity</div>
-            <div className="space-y-0.5">
-              {['', 'Beginner', 'Intermediate', 'Advanced'].map((c) => (
-                <button
-                  key={c || 'all'}
-                  onClick={() => setComplexity(c)}
-                  className={cn(
-                    'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors',
-                    complexity === c
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-muted-foreground hover:bg-muted/40'
-                  )}
-                >
-                  {c || 'All Levels'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Categories */}
-          {counts && counts.categories.length > 0 && (
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Category</div>
-              <div className="space-y-0.5 max-h-60 overflow-y-auto">
-                <button
-                  onClick={() => setCategory('')}
-                  className={cn(
-                    'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors',
-                    category === '' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-muted-foreground hover:bg-muted/40'
-                  )}
-                >
-                  <span>All Categories</span>
-                  <span className="text-[10px] tabular-nums">{counts.total.toLocaleString()}</span>
-                </button>
-                {counts.categories.map(({ name, count }) => (
-                  <button
-                    key={name}
-                    onClick={() => setCategory(category === name ? '' : name)}
-                    className={cn(
-                      'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors',
-                      category === name
-                        ? 'bg-blue-50 text-blue-700 font-medium'
-                        : 'text-muted-foreground hover:bg-muted/40'
-                    )}
-                  >
-                    <span className="truncate text-left">{name}</span>
-                    <span className="text-[10px] tabular-nums shrink-0 ml-1">{count.toLocaleString()}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Tag cloud */}
-          {counts && counts.topTags.length > 0 && (
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Filter by App
-                {selectedTags.length > 0 && (
-                  <button onClick={() => setSelectedTags([])} className="ml-2 text-blue-600 normal-case font-normal">clear</button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {counts.topTags.map(({ tag }) => (
-                  <button
-                    key={tag}
-                    onClick={() => toggleTag(tag)}
-                    className={cn(
-                      'text-[10px] px-2 py-1 rounded-full border font-medium transition-colors',
-                      selectedTags.includes(tag)
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'border-muted text-muted-foreground hover:border-blue-400 hover:text-blue-700'
-                    )}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {hasFilters && (
-            <button
-              onClick={clearAllFilters}
-              className="text-xs text-blue-600 hover:underline w-full text-left"
-            >
-              Clear all filters
-            </button>
-          )}
+    <>
+    <div className="space-y-5 max-w-7xl">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Automation Templates</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Browse and deploy pre-built workflows for n8n, Make.com, and Zapier
+          </p>
         </div>
-      </aside>
-
-      {/* ── Main content ──────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-auto p-6 space-y-5">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold">Automation Templates</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Browse pre-built workflows for n8n, Make.com, and Zapier
-            </p>
-          </div>
-          {totalCount !== null && (
-            <div className="text-right">
-              <div className="text-2xl font-bold text-blue-600">{totalCount.toLocaleString()}</div>
-              <div className="text-xs text-muted-foreground">templates</div>
-            </div>
-          )}
-        </div>
-
-        {/* Search + mobile filters toggle */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search templates..."
-              className="pl-8 h-9"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-
-          {/* Mobile filter toggle */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="lg:hidden gap-1.5 h-9"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter size={13} />
-            Filters
-            {hasFilters && <span className="text-blue-600 font-bold">·</span>}
-          </Button>
-        </div>
-
-        {/* Mobile filter drawer */}
-        {showFilters && (
-          <div className="lg:hidden border rounded-xl p-4 bg-muted/20 space-y-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              {(['all', 'n8n', 'make', 'zapier'] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPlatform(p)}
-                  className={cn(
-                    'px-3 py-1.5 rounded-md text-sm font-medium border transition-colors',
-                    platform === p ? 'bg-blue-600 text-white border-blue-600' : 'border-muted text-muted-foreground'
-                  )}
-                >
-                  {p === 'all' ? 'All' : p === 'make' ? 'Make.com' : p.charAt(0).toUpperCase() + p.slice(1)}
-                </button>
-              ))}
-            </div>
-            {counts && counts.topTags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {counts.topTags.slice(0, 20).map(({ tag }) => (
-                  <button
-                    key={tag}
-                    onClick={() => toggleTag(tag)}
-                    className={cn(
-                      'text-[10px] px-2 py-1 rounded-full border font-medium',
-                      selectedTags.includes(tag) ? 'bg-blue-600 text-white border-blue-600' : 'border-muted text-muted-foreground'
-                    )}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            )}
-            {hasFilters && (
-              <button onClick={clearAllFilters} className="text-xs text-blue-600 hover:underline">Clear all filters</button>
-            )}
-          </div>
-        )}
-
-        {/* Active tag pills */}
-        {selectedTags.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground">Filtering by:</span>
-            {selectedTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => toggleTag(tag)}
-                className="flex items-center gap-1 text-[11px] bg-blue-600 text-white rounded-full px-2.5 py-0.5 font-medium hover:bg-blue-700 transition-colors"
-              >
-                {tag} <X size={9} />
-              </button>
-            ))}
-            <button onClick={() => setSelectedTags([])} className="text-xs text-blue-600 hover:underline ml-1">Clear tags</button>
-          </div>
-        )}
-
-        {usingStatic && (
-          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
-            Showing limited results. Run <code className="font-mono">npm run ingest-templates</code> to load the full library.
-          </div>
-        )}
-
-        {/* Grid */}
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {[...Array(12)].map((_, i) => (
-              <div key={i} className="h-52 bg-muted animate-pulse rounded-xl" />
-            ))}
-          </div>
-        ) : templates.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-            <BookOpen size={40} className="mb-3 opacity-30" />
-            <p className="font-medium text-sm">No templates match your filters</p>
-            <button
-              onClick={clearAllFilters}
-              className="text-blue-600 text-sm mt-2 hover:underline"
-            >
-              Clear all filters
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {templates.map((t) => (
-              <TemplateCard key={t.id} template={t} onOpen={openDetail} onUse={handleUseTemplate} onTagClick={toggleTag} selectedTags={selectedTags} />
-            ))}
-          </div>
-        )}
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === 0 || loading}
-              onClick={() => setPage((p) => p - 1)}
-              className="gap-1"
-            >
-              <ChevronLeft size={14} /> Previous
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              {((page * PAGE_SIZE) + 1).toLocaleString()}–{Math.min((page + 1) * PAGE_SIZE, totalCount ?? 0).toLocaleString()} of {(totalCount ?? 0).toLocaleString()}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages - 1 || loading}
-              onClick={() => setPage((p) => p + 1)}
-              className="gap-1"
-            >
-              Next <ChevronRight size={14} />
-            </Button>
+        {totalCount !== null && (
+          <div className="text-right">
+            <div className="text-2xl font-bold text-blue-600">{totalCount.toLocaleString()}</div>
+            <div className="text-xs text-muted-foreground">templates</div>
           </div>
         )}
       </div>
+
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Platform tabs */}
+        <div className="flex items-center rounded-lg border bg-muted/30 p-1 gap-0.5">
+          {(['all', 'n8n', 'make', 'zapier'] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPlatform(p)}
+              className={cn(
+                'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                platform === p
+                  ? 'bg-white shadow-sm text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {p === 'all' ? 'All Platforms' : p === 'make' ? 'Make.com' : p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {/* Category */}
+        <Select value={category || 'All'} onValueChange={(v) => setCategory(v === 'All' ? '' : v)}>
+          <SelectTrigger className="w-44 h-9 text-sm">
+            <SelectValue placeholder="Category" />
+          </SelectTrigger>
+          <SelectContent className="max-h-72">
+            {categoryOptions.map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Complexity */}
+        <Select value={complexity || 'All'} onValueChange={(v) => setComplexity(v === 'All' ? '' : v)}>
+          <SelectTrigger className="w-36 h-9 text-sm">
+            <SlidersHorizontal size={13} className="mr-1.5 text-muted-foreground" />
+            <SelectValue placeholder="Complexity" />
+          </SelectTrigger>
+          <SelectContent>
+            {['All', 'Beginner', 'Intermediate', 'Advanced'].map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Search */}
+        <div className="relative flex-1 min-w-48">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search templates..."
+            className="pl-8 h-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+
+        {/* Active filters + result count */}
+        <div className="flex items-center gap-2 ml-auto">
+          {hasFilters && (
+            <button
+              onClick={clearAllFilters}
+              className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+            >
+              Clear filters
+            </button>
+          )}
+          {!loading && totalCount !== null && (
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
+              {totalCount.toLocaleString()} result{totalCount !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Active tag pills */}
+      {selectedTags.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Filtering by app:</span>
+          {selectedTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => toggleTag(tag)}
+              className="flex items-center gap-1 text-[11px] bg-blue-600 text-white rounded-full px-2.5 py-0.5 font-medium hover:bg-blue-700 transition-colors"
+            >
+              {tag} <X size={9} />
+            </button>
+          ))}
+          <button onClick={() => setSelectedTags([])} className="text-xs text-blue-600 hover:underline ml-1">Clear</button>
+        </div>
+      )}
+
+      {usingStatic && (
+        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+          Showing limited results. Run <code className="font-mono">npm run ingest-templates</code> to load the full library.
+        </div>
+      )}
+
+      {/* Grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {[...Array(12)].map((_, i) => (
+            <div key={i} className="h-52 bg-muted animate-pulse rounded-xl" />
+          ))}
+        </div>
+      ) : templates.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+          <BookOpen size={40} className="mb-3 opacity-30" />
+          <p className="font-medium text-sm">No templates match your filters</p>
+          <button
+            onClick={clearAllFilters}
+            className="text-blue-600 text-sm mt-2 hover:underline"
+          >
+            Clear all filters
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {templates.map((t) => (
+            <TemplateCard key={t.id} template={t} onOpen={openDetail} onUse={handleUseTemplate} onTagClick={toggleTag} selectedTags={selectedTags} />
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 0 || loading}
+            onClick={() => setPage((p) => p - 1)}
+            className="gap-1"
+          >
+            <ChevronLeft size={14} /> Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page + 1} of {totalPages.toLocaleString()}
+            {' · '}
+            {((page * PAGE_SIZE) + 1).toLocaleString()}–{Math.min((page + 1) * PAGE_SIZE, totalCount ?? 0).toLocaleString()} of {(totalCount ?? 0).toLocaleString()}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages - 1 || loading}
+            onClick={() => setPage((p) => p + 1)}
+            className="gap-1"
+          >
+            Next <ChevronRight size={14} />
+          </Button>
+        </div>
+      )}
+    </div>
 
       {/* ── Detail slide-over ─────────────────────────────────────────────── */}
       {selectedTemplate && (
@@ -619,7 +507,7 @@ export default function TemplatesPage() {
           </div>
         </>
       )}
-    </div>
+    </>
   );
 }
 

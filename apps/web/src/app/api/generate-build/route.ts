@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, buildCompleteHtml } from '@/lib/email/notifications';
+import { buildMakeComPrompt } from '@/lib/platforms/make/prompt-builder';
 
 // Allow up to 5 minutes — parallel Claude calls + optional MCP lookup
 export const maxDuration = 300;
@@ -282,42 +283,7 @@ Include 6-10 nodes with realistic parameters for the specific use case.${templat
     ticket.ticket_type === 'n8n'
       ? n8nWorkflowSystem
       : ticket.ticket_type === 'make'
-      ? `You are an expert Make.com automation engineer. Generate a complete, importable Make.com scenario blueprint JSON.
-
-The JSON must have this exact shape:
-{
-  "name": "Scenario Name",
-  "flow": [
-    {
-      "id": 1,
-      "module": "gateway:CustomWebHook",
-      "version": 1,
-      "parameters": { "hook": "{{hookId}}" },
-      "mapper": {},
-      "metadata": { "designer": { "x": 0, "y": 0 } }
-    },
-    {
-      "id": 2,
-      "module": "google-sheets:addRow",
-      "version": 2,
-      "parameters": {},
-      "mapper": { "spreadsheetId": "{{spreadsheetId}}", "values": {} },
-      "metadata": { "designer": { "x": 300, "y": 0 } }
-    }
-  ],
-  "metadata": { "instant": true, "version": 1 },
-  "routes": []
-}
-
-Make.com module naming convention: "app:moduleName" (e.g., "google-sheets:addRow", "slack:createMessage", "hubspot:createContact", "email:sendEmail", "router:RouterModule", "builtin:BasicRouter").
-
-Rules:
-- Include 4-8 modules in the flow array with realistic module names for the use case
-- Use "router:RouterModule" for branching, set "routes" array at top level for branches
-- Add error handler modules after modules that might fail (use "builtin:SetError")
-- Increment designer x position by 300 for each sequential module
-- Use Make.com variable syntax: {{moduleId.fieldName}} for data mapping
-${templateContextCapped}`
+      ? buildMakeComPrompt({ templateContext: templateContextCapped })
       : `You are an expert Zapier automation engineer. Generate a complete, structured Zap definition JSON.
 
 The JSON must have this exact shape:
@@ -590,6 +556,13 @@ The Live Demo tab must be genuinely interactive:
     // If workflow response is suspiciously short (<500 chars), retry once
     if (workflowJson.trim().length < 500) {
       console.warn('[generate-build] Workflow JSON too short (' + workflowJson.length + ' chars) — retrying...');
+      const retryUserContent =
+        ticket.ticket_type === 'make'
+          ? `Generate the complete Make.com scenario blueprint JSON for this project. This is a .json file that would be imported into Make.com.\n\n${context}\n\nThe JSON must have "name" (string), "flow" (array of 6-10 module objects each with id/module/version/parameters/mapper/metadata), and "metadata" (object with version and scenario settings). Module format: "app:actionName". Data mapping: {{moduleId.fieldName}}. Output only raw JSON, first character must be {.`
+          : ticket.ticket_type === 'zapier'
+          ? `Generate the complete Zapier workflow definition JSON for this project.\n\n${context}\n\nThe JSON must have "name" (string) and "steps" (array with position, type, app, action, params). Output only raw JSON.`
+          : `Generate the complete n8n workflow definition JSON for this project. This is the content of a .json file you would import into n8n via Settings → Import Workflow.\n\n${context}\n\nThe JSON must have a "name" field (string), a "nodes" array (with 6-10 node objects), and a "connections" object. Node objects have id, name, type, typeVersion, position, and parameters fields. Do not use {{ }} runtime expressions as property values — use literal strings or numbers only.`;
+
       const retryMsg = await anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 12000,
@@ -597,7 +570,7 @@ The Live Demo tab must be genuinely interactive:
         messages: [
           {
             role: 'user',
-            content: `Generate the complete n8n workflow definition JSON for this project. This is the content of a .json file you would import into n8n via Settings → Import Workflow.\n\n${context}\n\nThe JSON must have a "name" field (string), a "nodes" array (with 6-10 node objects), and a "connections" object. Node objects have id, name, type, typeVersion, position, and parameters fields. Do not use {{ }} runtime expressions as property values — use literal strings or numbers only.`,
+            content: retryUserContent,
           },
         ],
       });
