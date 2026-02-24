@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:templates": "npx tsx scripts/seed-platform-templates.ts",
+    "ingest-templates": "npx tsx scripts/ingest-templates.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
