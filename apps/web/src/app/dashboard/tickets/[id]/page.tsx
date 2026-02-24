@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import {
   Building2, User, Mail, Calendar, Tag, Cpu,
   Download, Eye, FileText, Link2, ArrowLeft, Loader2,
-  CheckCircle, AlertCircle, Package,
+  CheckCircle, AlertCircle, Package, Share2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -49,6 +49,18 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  function handleCopyShareLink(type: 'demo' | 'plan') {
+    const url = `${window.location.origin}/share/${id}/${type}`;
+    navigator.clipboard.writeText(url).then(() => {
+      toast.success('Link copied to clipboard!');
+    }).catch(() => {
+      toast.error('Could not copy link');
+    });
+  }
+
+  const hasDemo = artifacts.some((a) => a.artifact_type === 'solution_demo');
+  const hasPlan = artifacts.some((a) => a.artifact_type === 'build_plan');
 
   useEffect(() => {
     async function load() {
@@ -277,6 +289,34 @@ export default function TicketDetailPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Share buttons row */}
+          {(hasDemo || hasPlan) && (
+            <div className="flex items-center gap-2 mb-4 pb-4 border-b flex-wrap">
+              <span className="text-xs text-muted-foreground font-medium">Share:</span>
+              {hasDemo && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 h-7 text-xs"
+                  onClick={() => handleCopyShareLink('demo')}
+                >
+                  <Share2 size={11} /> Demo Link
+                </Button>
+              )}
+              {hasPlan && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 h-7 text-xs"
+                  onClick={() => handleCopyShareLink('plan')}
+                >
+                  <Share2 size={11} /> Build Plan Link
+                </Button>
+              )}
+              <span className="text-xs text-muted-foreground ml-1">— Anyone with the link can view without logging in</span>
+            </div>
+          )}
+
           {artifacts.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Package size={32} className="mx-auto mb-2 opacity-30" />

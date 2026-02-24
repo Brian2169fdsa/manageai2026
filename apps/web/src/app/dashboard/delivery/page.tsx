@@ -15,7 +15,9 @@ import {
   Calendar,
   Building2,
   ChevronRight,
+  Share2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Ticket } from '@/types';
 
@@ -274,6 +276,15 @@ function SummaryCard({
 
 // ── Project card ─────────────────────────────────────────────────────────────
 function ProjectCard({ ticket, onClick }: { ticket: TicketWithCount; onClick: () => void }) {
+  function copyShareLink(e: React.MouseEvent) {
+    e.stopPropagation();
+    const url = `${window.location.origin}/share/${ticket.id}/demo`;
+    navigator.clipboard.writeText(url).then(() => {
+      toast.success('Demo link copied!');
+    }).catch(() => {
+      toast.error('Could not copy link');
+    });
+  }
   const status = STATUS_CONFIG[ticket.status] ?? { label: ticket.status, variant: 'bg-gray-100 text-gray-700', dot: 'bg-gray-400' };
   const platform = PLATFORM_CONFIG[ticket.ticket_type] ?? { label: ticket.ticket_type, class: 'bg-gray-100 text-gray-600' };
   const progress = STATUS_PROGRESS[ticket.status] ?? 0;
@@ -294,7 +305,18 @@ function ProjectCard({ ticket, onClick }: { ticket: TicketWithCount; onClick: ()
             {ticket.project_name || 'Untitled Project'}
           </h3>
         </div>
-        <ChevronRight size={16} className="shrink-0 text-muted-foreground mt-1 group-hover:text-blue-600 transition-colors" />
+        <div className="flex items-center gap-1 shrink-0">
+          {(ticket.artifact_count ?? 0) > 0 && (
+            <button
+              onClick={copyShareLink}
+              title="Copy shareable demo link"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+              <Share2 size={13} />
+            </button>
+          )}
+          <ChevronRight size={16} className="text-muted-foreground mt-0.5 group-hover:text-blue-600 transition-colors" />
+        </div>
       </div>
 
       {/* Badges */}

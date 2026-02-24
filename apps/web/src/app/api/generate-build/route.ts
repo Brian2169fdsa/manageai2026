@@ -375,33 +375,86 @@ ${templateContextCapped}`;
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
-        system: `You are a senior automation engineer writing a comprehensive build manual for a client project.
+        system: `You are a senior automation engineer at ManageAI creating a premium, interactive client-facing build manual.
 
-Generate a COMPLETE, DETAILED build plan as a standalone HTML file that opens directly in a browser.
+Generate a COMPLETE, self-contained HTML file that is a tabbed React application. Use React 18 via CDN with React.createElement (NO JSX). This must match ManageAI's Cornerstone design standard — polished enough to send directly to an enterprise client.
 
-Required sections:
-1. Executive Summary — what this automation does and the business value
-2. System Architecture — ASCII diagram of the data flow + description
-3. Prerequisites — all accounts, API keys, webhooks, and permissions needed before starting
-4. Step-by-Step Build Instructions — numbered, detailed steps for each workflow node/module
-5. Node/Module Configuration — exact settings, parameters, and credentials for each component
-6. Data Mapping Reference — input fields → output fields table
-7. Testing Plan — specific test cases with expected inputs/outputs
-8. Deployment Checklist — pre-launch validation steps
-9. Monitoring & Alerting — how to know when it breaks
-10. Troubleshooting Guide — common failure modes and fixes
+=== MANDATORY STRUCTURE ===
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>[Project Name] — Build Plan | ManageAI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', 'Helvetica Neue', sans-serif; background: #FFFFFF; color: #1A1A2E; line-height: 1.6; }
+    @keyframes slideIn { from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)} }
+    @keyframes floatUp { 0%{opacity:0;transform:translateY(0) scale(1)}10%{opacity:.15}90%{opacity:0}100%{opacity:0;transform:translateY(-800px) scale(0)} }
+    @keyframes pulseGlow { 0%,100%{box-shadow:0 0 15px rgba(74,143,214,.06)}50%{box-shadow:0 0 30px rgba(74,143,214,.18)} }
+    @keyframes pulseDot { 0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.4);opacity:1} }
+    :root { --accent:#4A8FD6; --accent-dim:rgba(74,143,214,0.07); --bg:#FFFFFF; --surface:#F8F9FB; --surface2:#F0F2F5; --border:#E2E5EA; --text:#1A1A2E; --text-dim:#8890A0; --text-mid:#5A6070; --success:#22A860; --warning:#E5A200; --danger:#E04848; --logo:#2A2A3E; --purple:#7C5CFC; --orange:#E8723A; --teal:#1AA8A8; --mono:'JetBrains Mono',monospace; }
+    .particle { position:fixed; border-radius:50%; pointer-events:none; animation:floatUp linear infinite; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const e = React.createElement;
+    const { useState, useEffect, useRef } = React;
+    const C = { accent:'#4A8FD6', accentDim:'rgba(74,143,214,0.07)', bg:'#FFFFFF', surface:'#F8F9FB', surface2:'#F0F2F5', border:'#E2E5EA', text:'#1A1A2E', textDim:'#8890A0', textMid:'#5A6070', success:'#22A860', warning:'#E5A200', danger:'#E04848', logo:'#2A2A3E', purple:'#7C5CFC', orange:'#E8723A', teal:'#1AA8A8' };
+    // ... full React app using React.createElement ...
+    ReactDOM.createRoot(document.getElementById('root')).render(e(App, null));
+  </script>
+</body>
+</html>
 
-HTML design (all styles inline or in <style> tag in <head>):
-- Font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
-- Primary: #4A8FD6 (blue), text: #1A1A2E, page bg: #F8F9FB
-- White cards with border-radius: 12px, box-shadow: 0 2px 12px rgba(0,0,0,0.08)
-- h2 sections with left blue border (border-left: 4px solid #4A8FD6)
-- Code/config blocks: background #1e1e1e, color #d4d4d4, font-family monospace
-- Tables with alternate row shading
-- Section numbers in blue circles
-- Professional enough to send to the client directly
+=== TABS (6 required) ===
+1. Overview — KPI impact cards (time saved, steps automated, systems connected, complexity) + architecture flow diagram (flex row of labeled step boxes with → connectors) + key principles list
+2. Setup & Accounts — account cards for every required service (icon circle with colored bg, name, purpose, connection string in JetBrains Mono, setup notes)
+3. Build Steps — expandable accordion cards, one per workflow node/module. Each card: step number, node name, node type badge, expanded view shows: purpose, configuration parameters in monospace, data inputs/outputs, common issues
+4. Requirements — functional requirements table with columns: ID | Requirement | Maps To | Priority. Use FRxx IDs. Alternating row shading.
+5. Timeline — phased delivery bars with week ranges. Phase 1 (Setup), Phase 2 (Core Build), Phase 3 (Testing), Phase 4 (Go-Live). Each phase: color-coded bar, deliverables list, duration
+6. Go-Live — interactive checklist (clicking checks off items with green fill + strikethrough). Two sections: Pre-Launch Checklist + Open Questions. Track completion percentage with a progress bar.
 
-Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
+=== HEADER (required on every tab) ===
+Fixed header, background: linear-gradient(135deg,#F8F9FB,#FFFFFF), border-bottom: 1px solid #E2E5EA, padding 16px 32px, flex row:
+- Left: "MANAGE" (#2A2A3E, 700 weight) + "AI" (#4A8FD6, 700 weight) in 22px, vertical divider, client name + document type in 13px #8890A0
+- Center: tab buttons (active = #4A8FD6 bg white text rounded pill, inactive = transparent #8890A0)
+- Right: version badge + date
+
+=== BACKGROUND ===
+Behind content (not on header): subtle grid pattern — background-image: linear-gradient(#E2E5EA33 1px,transparent 1px),linear-gradient(90deg,#E2E5EA33 1px,transparent 1px); background-size:60px 60px
+12 floating particle divs: random sizes 4-10px, colors from palette at low opacity, random positions, floatUp animation with staggered delays 0-25s, duration 18-35s
+
+=== CARD PATTERNS ===
+KPI cards: padding 20px, borderRadius 12px, background #F8F9FB, border 1px solid #E2E5EA, textAlign center. Icon (28px emoji or SVG) on top, large number (28px, fontFamily JetBrains Mono, color #4A8FD6) middle, label (12px #8890A0) bottom. Hover: transform translateY(-2px), box-shadow 0 8px 24px rgba(0,0,0,.08)
+Expandable accordion: header row (step number circle in #4A8FD6, name, type badge, expand chevron). On click toggle expanded section with slideIn animation. Expanded: configuration block in JetBrains Mono on #1A1A2E bg, data mapping table
+Account cards: 40px icon circle with colored background, 13px font-weight 600 name, 11px #8890A0 description, monospace connection string in a pill
+Callout boxes (info/warning/success): 8% opacity background of the color, 22% opacity left border 3px, icon + title bold + description
+
+=== FOOTER ===
+Padding 24px 32px, border-top #E2E5EA, flex justify-between:
+- Left: "MANAGE" + "AI" branding (same as header, smaller)
+- Center: document name + version + generated date
+- Right: "CONFIDENTIAL — Prepared for [Client Name]"
+All text: 11px #8890A0
+
+=== CRITICAL RULES ===
+- Output ONLY the complete HTML. First character must be <!DOCTYPE html>
+- ALL content is specific to the ticket's client, project, and automation — no generic filler
+- Use React.createElement throughout, never JSX
+- Every section animates in with slideIn + staggered delay (style={{animation:'slideIn .4s ease both', animationDelay:'Xs'}})
+- JetBrains Mono for: IDs, parameters, connection strings, node types, code values
+- DM Sans for all other text
+- The Go-Live checklist must have real, specific checklist items derived from the project (not generic ones)
+- Build Steps must have one card per actual integration/node in the workflow (minimum 5)
+- Inline all styles — no external CSS files
+- Make it premium enough to impress an enterprise client`,
         messages: [
           {
             role: 'user',
@@ -414,28 +467,88 @@ Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
-        system: `You are creating an interactive HTML demo for a client showing their automation solution.
+        system: `You are creating a premium interactive client demo at ManageAI showing an automation solution.
 
-Generate a SINGLE, complete, self-contained HTML file with vanilla JavaScript only.
-Import Google Font DM Sans with @import in the CSS.
+Generate a COMPLETE, self-contained HTML file — a tabbed React application using React 18 via CDN with React.createElement (NO JSX). This matches ManageAI's Cornerstone design standard.
 
-Tab navigation with these 6 sections:
-1. Overview — headline, what this automation does, key benefits list
-2. The Challenge — business problem, pain points, current state vs. future state
-3. How It Works — numbered step-by-step visual flow of the automation with connecting arrows, each step has an icon and description
-4. Live Demo — interactive simulation: a "Run Demo" button that animates data flowing through the system. Show realistic-looking data (emails, records, messages) transforming at each step. Make it actually click-interactive.
-5. ROI — time saved per week/month, cost reduction estimate, efficiency gain — use animated counting number displays that count up when the tab is active
-6. Next Steps — implementation timeline (days per phase), what ManageAI delivers, CTA to get started
+=== MANDATORY STRUCTURE ===
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>[Project Name] — Solution Demo | ManageAI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', 'Helvetica Neue', sans-serif; background: #FFFFFF; color: #1A1A2E; }
+    @keyframes slideIn { from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)} }
+    @keyframes floatUp { 0%{opacity:0;transform:translateY(0) scale(1)}10%{opacity:.15}90%{opacity:0}100%{opacity:0;transform:translateY(-800px) scale(0)} }
+    @keyframes countUp { from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)} }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.5} }
+    @keyframes dataFlow { 0%{transform:translateX(-100%);opacity:0}50%{opacity:1}100%{transform:translateX(100%);opacity:0} }
+    :root { --accent:#4A8FD6; --surface:#F8F9FB; --border:#E2E5EA; --text:#1A1A2E; --text-dim:#8890A0; --success:#22A860; --purple:#7C5CFC; --orange:#E8723A; --teal:#1AA8A8; }
+    .particle { position:fixed; border-radius:50%; pointer-events:none; animation:floatUp linear infinite; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const e = React.createElement;
+    const { useState, useEffect, useRef, useCallback } = React;
+    // ... full app ...
+    ReactDOM.createRoot(document.getElementById('root')).render(e(App, null));
+  </script>
+</body>
+</html>
 
-Design:
-- DM Sans font, primary: #4A8FD6, background: #fff, card bg: #F8F9FB
-- Active tab: blue bottom border + blue text, inactive: gray
-- Smooth fadeIn transition between tabs (CSS only, no jQuery)
-- Step arrows in How It Works: use → emoji or CSS borders
-- Mobile responsive (max-width 900px centered)
-- Very polished, client-ready presentation
+=== TABS (6 required) ===
+1. Overview — Hero section: large headline ("Automating [X] for [Company]"), 1-sentence impact statement, 3 benefit pills. Below: 4 KPI impact cards (time saved per week, steps automated, error reduction %, ROI multiplier) in JetBrains Mono numbers. Then: "What This Does" paragraph.
+2. How It Works — Visual flow diagram: flex row of step cards connected by animated → arrows. Each step: colored numbered circle, emoji icon, step name (bold), 1-line description. Below: written explanation of the full flow in plain language. Steps must be specific to this automation.
+3. Live Demo — Interactive walkthrough. Shows a realistic simulation of the automation running:
+   • A "Run Demo" button that when clicked, animates through each step with status indicators (⏳→✅)
+   • Shows realistic sample data specific to the use case: if it's an email workflow, show a simulated email. If CRM, show a contact record. If Slack, show a message preview. Each step reveals its output.
+   • A "Reset" button to run again
+   • Progress bar showing automation completion
+4. Architecture — Tech stack section: cards for each integration (platform logo placeholder, name, purpose, connection type). Integration diagram showing data flow between systems. "What ManageAI Configures" vs "What You Provide" two-column table.
+5. ROI Calculator — Editable input fields: hours/week currently spent manually, team size, hourly rate, error rate. Calculated outputs animate as numbers change: time saved/week, cost saved/month, annual ROI, payback period. Show formula explanation. All numbers in JetBrains Mono with countUp animation when tab activates.
+6. Next Steps — Implementation timeline: horizontal phase bars (Week 1: Setup, Week 2-3: Build, Week 4: Testing, Week 5: Go-Live). What ManageAI delivers (checklist). What client provides (checklist). CTA button: "Schedule Kickoff Call" (blue, prominent).
 
-Output ONLY the complete HTML file starting with <!DOCTYPE html>.`,
+=== HEADER (same as build plan) ===
+Fixed header, gradient background, ManageAI branding, tab navigation, version + date.
+
+=== BACKGROUND ===
+Subtle grid + 10 floating particles.
+
+=== LIVE DEMO REQUIREMENTS ===
+The Live Demo tab must be genuinely interactive:
+- Show realistic data specific to THIS automation (not generic "Lorem ipsum")
+- If the workflow involves emails → show a styled email preview
+- If it involves CRM data → show a contact/deal card
+- If it involves Slack → show a Slack-style message bubble
+- Each automation step should light up sequentially with a 800ms delay between steps
+- Final state shows all steps green with a success message
+
+=== ROI CALCULATOR REQUIREMENTS ===
+- Input fields must be editable (React controlled state)
+- Default values must be realistic for the use case
+- Calculations update in real-time as user types
+- Animate the output numbers with a brief scale animation on change
+- Show the math: display formula text below each result
+
+=== CRITICAL RULES ===
+- Output ONLY the complete HTML. First character must be <!DOCTYPE html>
+- ALL content, data, steps, and examples are SPECIFIC to the client's automation — no generic examples
+- Use React.createElement throughout, never JSX
+- JetBrains Mono for: numbers, metrics, code values, IDs
+- DM Sans for all prose text
+- The demo simulation must use realistic data from the ticket context (company name, use case, systems)
+- Inline all styles
+- Mobile responsive (max-width 960px centered, single column on mobile)
+- Footer: ManageAI branding + "CONFIDENTIAL — Prepared for [Client Name]" + version`,
         messages: [
           {
             role: 'user',
