@@ -38,7 +38,7 @@ loadEnvFile(path.join(process.cwd(), '.env.local'));
 // ── Config ────────────────────────────────────────────────────────────────────
 const REPO_URL    = 'https://github.com/zengfr/n8n-workflow-all-templates.git';
 const CLONE_DIR   = '/tmp/n8n-templates-zengfr';
-const SOURCE_ID   = 'zengfr-mega';
+const SOURCE_ID   = 'github:zengfr/n8n-workflow-all-templates';
 const SOURCE_REPO = 'github.com/zengfr/n8n-workflow-all-templates';
 const BATCH_SIZE  = Number(process.env.BATCH_SIZE  ?? 50);
 const MAX_WORKFLOWS_ENV = process.env.MAX_WORKFLOWS;
@@ -209,25 +209,23 @@ function extractTriggerType(nodes: Array<{ type?: string; name?: string }>): str
 }
 
 // ── Description generator ─────────────────────────────────────────────────────
-function generateDescription(
-  name: string,
-  tags: string[],
-  category: string,
-  nodeCount: number,
-  triggerType: string,
-): string {
-  const appTags = tags.filter(t => !['Webhook', 'HTTP/API', 'Scheduled', 'AI/LLM', 'Manual'].includes(t));
-  const apps = appTags.slice(0, 3).join(', ') || 'multiple services';
-  const sizeDesc = nodeCount <= 3 ? 'lightweight' : nodeCount <= 7 ? 'multi-step' : 'comprehensive';
-  const triggerDesc = triggerType === 'Webhook'   ? 'Triggered by webhook event.' :
-                      triggerType === 'Schedule'  ? 'Runs on a schedule.' :
-                      triggerType === 'Email'     ? 'Triggered by incoming email.' :
-                      triggerType === 'Manual'    ? 'Manually triggered.' :
-                      `Triggered by ${triggerType}.`;
+// Format: "Connects App1, App2, and App3 with N steps"
+function generateDescription(tags: string[], nodeCount: number): string {
+  const appTags = tags.filter(t =>
+    !['Webhook', 'HTTP/API', 'Scheduled', 'Manual', 'Database', 'FTP'].includes(t)
+  );
 
-  const nameSanitized = name.replace(/\s*[-–]\s*v\d+(\.\d+)*$/i, '').trim();
+  if (appTags.length === 0) {
+    return `Automates a ${nodeCount}-step workflow using n8n.`;
+  }
 
-  return `${sizeDesc.charAt(0).toUpperCase() + sizeDesc.slice(1)} n8n automation: ${nameSanitized}. ${triggerDesc} Integrates ${apps} to automate ${category.toLowerCase()} tasks. Import directly into n8n and customize to your workflow.`;
+  const uniqueApps = [...new Set(appTags)].slice(0, 3);
+  const appStr =
+    uniqueApps.length === 1 ? uniqueApps[0] :
+    uniqueApps.length === 2 ? `${uniqueApps[0]} and ${uniqueApps[1]}` :
+    `${uniqueApps[0]}, ${uniqueApps[1]}, and ${uniqueApps[2]}`;
+
+  return `Connects ${appStr} with ${nodeCount} step${nodeCount !== 1 ? 's' : '.'}`;
 }
 
 // ── Filesystem walker ─────────────────────────────────────────────────────────
@@ -277,23 +275,28 @@ async function main() {
     }
   }
 
-  // ── Step 2: Delete existing records from this source ───────────────────────
-  console.log(`\nClearing old records with source="${SOURCE_ID}"...`);
-  const { error: delErr, count: delCount } = await supabase
-    .from('templates')
-    .delete({ count: 'exact' })
-    .eq('source', SOURCE_ID);
-  if (delErr) {
-    console.warn('  Warning — could not clear old records:', delErr.message);
-  } else {
-    console.log(`  ✓ Cleared ${delCount ?? 0} old records`);
+  // ── Step 2: Delete existing records from this source (+ legacy source ID) ──
+  const sourcesToClear = [SOURCE_ID, 'zengfr-mega']; // include legacy id from earlier runs
+  let totalCleared = 0;
+  for (const src of sourcesToClear) {
+    const { error: delErr, count: delCount } = await supabase
+      .from('templates')
+      .delete({ count: 'exact' })
+      .eq('source', src);
+    if (delErr) {
+      console.warn(`  Warning — could not clear source="${src}": ${delErr.message}`);
+    } else if ((delCount ?? 0) > 0) {
+      totalCleared += delCount ?? 0;
+    }
   }
+  console.log(`\nCleared ${totalCleared} old records (sources: ${sourcesToClear.join(', ')})`);
+  if (totalCleared === 0) console.log('  (none found — fresh insert)');
 
   // ── Step 3: Parse all JSON files ───────────────────────────────────────────
   console.log('\nParsing workflow files...');
   type TemplateRow = {
     name: string; platform: string; category: string; description: string;
-    node_count: number; tags: string[]; workflow_json: unknown;
+    node_count: number; tags: string[]; json_template: unknown;
     source_repo: string; source_filename: string; source: string;
     trigger_type: string; complexity: string;
   };
@@ -372,10 +375,10 @@ async function main() {
       name,
       platform: 'n8n',
       category,
-      description: generateDescription(name, tags, category, nodeCount, triggerType),
+      description: generateDescription(tags, nodeCount),
       node_count: nodeCount,
       tags,
-      workflow_json: json,
+      json_template: json,
       source_repo: SOURCE_REPO,
       source_filename: path.relative(CLONE_DIR, filePath),
       source: SOURCE_ID,
