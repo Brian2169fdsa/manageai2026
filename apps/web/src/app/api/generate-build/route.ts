@@ -3,6 +3,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, buildCompleteHtml } from '@/lib/email/notifications';
 import { buildMakeComPrompt } from '@/lib/platforms/make/prompt-builder';
+import {
+  ZAPIER_WORKFLOW_SYSTEM,
+  buildZapierWorkflowUserMessage,
+  getZapierBuildPlanAddendum,
+  getZapierDemoAddendum,
+} from '@/lib/platforms/zapier/prompt-builder';
 
 // Allow up to 5 minutes — parallel Claude calls + optional MCP lookup
 export const maxDuration = 300;
@@ -284,51 +290,7 @@ Include 6-10 nodes with realistic parameters for the specific use case.${templat
       ? n8nWorkflowSystem
       : ticket.ticket_type === 'make'
       ? buildMakeComPrompt({ templateContext: templateContextCapped })
-      : `You are an expert Zapier automation engineer. Generate a complete, structured Zap definition JSON.
-
-The JSON must have this exact shape:
-{
-  "name": "Zap Name",
-  "steps": [
-    {
-      "position": 1,
-      "type": "trigger",
-      "app": "webhook",
-      "action": "catch_hook",
-      "params": {}
-    },
-    {
-      "position": 2,
-      "type": "filter",
-      "condition": "Field A contains Value B",
-      "params": {}
-    },
-    {
-      "position": 3,
-      "type": "action",
-      "app": "google_sheets",
-      "action": "create_spreadsheet_row",
-      "params": { "spreadsheet": "...", "worksheet": "..." }
-    },
-    {
-      "position": 4,
-      "type": "path",
-      "label": "Path A",
-      "condition": "Status equals Active",
-      "steps": [
-        { "position": 1, "type": "action", "app": "slack", "action": "send_channel_message", "params": {} }
-      ]
-    }
-  ]
-}
-
-Rules:
-- Include 3-6 steps total (trigger + filters + actions)
-- Use "filter" type steps where data gating is needed
-- Use "path" type steps for branching logic with nested steps arrays
-- Use standard Zapier app slugs: google_sheets, slack, gmail, hubspot, salesforce, airtable, notion, trello, asana, zendesk, stripe
-- params should contain realistic field names for the given app/action
-${templateContextCapped}`;
+      : `${ZAPIER_WORKFLOW_SYSTEM}\n${templateContextCapped}`;
 
   // ── 7. Run all 3 AI generations in parallel ──────────────────────────────
   let buildPlanHtml: string;
@@ -424,7 +386,7 @@ All text: 11px #8890A0
         messages: [
           {
             role: 'user',
-            content: `Generate the complete build plan for:\n\n${context}`,
+            content: `Generate the complete build plan for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierBuildPlanAddendum() : ''}`,
           },
         ],
       }),
@@ -518,7 +480,7 @@ The Live Demo tab must be genuinely interactive:
         messages: [
           {
             role: 'user',
-            content: `Generate the interactive solution demo for:\n\n${context}`,
+            content: `Generate the interactive solution demo for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierDemoAddendum() : ''}`,
           },
         ],
       }),
@@ -535,7 +497,7 @@ The Live Demo tab must be genuinely interactive:
               ? `Generate the complete n8n workflow definition JSON for this project:\n\n${context}\n\nIMPORTANT: Output only the JSON object that would be saved as a .json file and imported into n8n. Do NOT output n8n runtime expressions like {{ $json }}.`
               : ticket.ticket_type === 'make'
               ? `Generate the complete Make.com scenario blueprint JSON for this project:\n\n${context}\n\nIMPORTANT: Output only the JSON object. Use the "flow" array (not "modules"). Follow Make.com module naming: "app:moduleName".`
-              : `Generate the complete Zapier workflow definition JSON for this project:\n\n${context}\n\nIMPORTANT: Output only the JSON object. Use the "steps" array with position, type, app, action, params. Include filter and path steps where appropriate.`,
+              : buildZapierWorkflowUserMessage(context),
           },
         ],
       }),
@@ -560,7 +522,7 @@ The Live Demo tab must be genuinely interactive:
         ticket.ticket_type === 'make'
           ? `Generate the complete Make.com scenario blueprint JSON for this project. This is a .json file that would be imported into Make.com.\n\n${context}\n\nThe JSON must have "name" (string), "flow" (array of 6-10 module objects each with id/module/version/parameters/mapper/metadata), and "metadata" (object with version and scenario settings). Module format: "app:actionName". Data mapping: {{moduleId.fieldName}}. Output only raw JSON, first character must be {.`
           : ticket.ticket_type === 'zapier'
-          ? `Generate the complete Zapier workflow definition JSON for this project.\n\n${context}\n\nThe JSON must have "name" (string) and "steps" (array with position, type, app, action, params). Output only raw JSON.`
+          ? buildZapierWorkflowUserMessage(context)
           : `Generate the complete n8n workflow definition JSON for this project. This is the content of a .json file you would import into n8n via Settings → Import Workflow.\n\n${context}\n\nThe JSON must have a "name" field (string), a "nodes" array (with 6-10 node objects), and a "connections" object. Node objects have id, name, type, typeVersion, position, and parameters fields. Do not use {{ }} runtime expressions as property values — use literal strings or numbers only.`;
 
       const retryMsg = await anthropic.messages.create({

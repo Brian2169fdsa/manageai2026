@@ -118,17 +118,57 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Unsupported platform: ${platform}` }, { status: 400 });
     }
 
-    // ── 6. Create deployment record ──────────────────────────────────────────
+    // ── 6a. Zapier: upload setup guide HTML as an additional artifact ─────────
+    let zapierGuideUrl: string | null = null;
+    const zapierResult = deployResult as { setupGuideHtml?: string; type?: string };
+    if (platform === 'zapier' && zapierResult.setupGuideHtml) {
+      const guideTimestamp = Date.now();
+      const guidePath = `${ticket_id}/artifacts/zapier-setup-guide-${guideTimestamp}.html`;
+      try {
+        const guideBuffer = Buffer.from(zapierResult.setupGuideHtml, 'utf-8');
+        const { error: guideUploadError } = await supabase.storage
+          .from('ticket-files')
+          .upload(guidePath, guideBuffer, { contentType: 'text/html; charset=utf-8', upsert: true });
+
+        if (guideUploadError) {
+          console.warn('[deploy] Zapier guide upload error:', guideUploadError.message);
+        } else {
+          // Create an artifact record for the setup guide
+          await supabase.from('ticket_artifacts').insert({
+            ticket_id,
+            artifact_type: 'build_plan',
+            file_name: `zapier-setup-guide-${guideTimestamp}.html`,
+            file_path: guidePath,
+            version: 1,
+            metadata: {
+              generated_at: new Date().toISOString(),
+              type: 'zapier_setup_guide',
+              chars: zapierResult.setupGuideHtml.length,
+            },
+          });
+
+          const { data: signedData } = await supabase.storage
+            .from('ticket-files')
+            .createSignedUrl(guidePath, 60 * 60 * 24 * 7); // 7 days
+          zapierGuideUrl = signedData?.signedUrl ?? null;
+          console.log('[deploy] Zapier setup guide uploaded:', guidePath);
+        }
+      } catch (guideErr) {
+        console.warn('[deploy] Could not upload Zapier setup guide:', (guideErr as Error).message);
+      }
+    }
+
+    // ── 6b. Create deployment record ─────────────────────────────────────────
     const { data: deployment, error: deployInsertError } = await supabase
       .from('deployments')
       .insert({
         ticket_id,
         platform,
-        status: deployResult.success ? 'deployed' : 'failed',
+        status: platform === 'zapier' ? 'manual_guide_generated' : (deployResult.success ? 'deployed' : 'failed'),
         external_id: (deployResult as { workflowId?: string; scenarioId?: string }).workflowId
           ?? (deployResult as { workflowId?: string; scenarioId?: string }).scenarioId
           ?? null,
-        external_url: (deployResult as { url?: string }).url ?? null,
+        external_url: zapierGuideUrl ?? (deployResult as { url?: string }).url ?? null,
         deploy_type: (deployResult as { type?: string }).type ?? 'api',
         instructions: (deployResult as { instructions?: string }).instructions ?? null,
         error_message: deployResult.error ?? null,
@@ -181,11 +221,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: deployResult.success,
       deployment_id: deployment?.id ?? null,
-      status: deployResult.success ? 'deployed' : 'failed',
+      status: platform === 'zapier' ? 'manual_guide_generated' : (deployResult.success ? 'deployed' : 'failed'),
       platform,
-      external_url: (deployResult as { url?: string }).url ?? null,
+      external_url: zapierGuideUrl ?? (deployResult as { url?: string }).url ?? null,
       deploy_type: (deployResult as { type?: string }).type ?? 'api',
       instructions: (deployResult as { instructions?: string }).instructions ?? null,
+      zapier_guide_url: zapierGuideUrl,
       error: deployResult.error ?? null,
     });
   } catch (err) {
