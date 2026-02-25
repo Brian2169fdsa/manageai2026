@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase/client';
 import { Ticket } from '@/types';
 import {
-  TrendingUp, DollarSign, Users, Percent, Target, MoveRight, AlertCircle, Settings,
+  TrendingUp, DollarSign, Users, Percent, Target, MoveRight, AlertCircle, Settings, ArrowRight,
 } from 'lucide-react';
+import Link from 'next/link';
 import { AgentButton } from '@/components/agents/AgentButton';
 import { agentConfigs } from '@/lib/agents/configs';
 
@@ -244,6 +245,15 @@ export default function SalesPage() {
                                 ${Number(deal.value).toLocaleString()}
                               </span>
                             )}
+                          </div>
+                          <div className="mt-1.5 pt-1.5 border-t border-gray-50">
+                            <Link
+                              href={`/dashboard/customers/${deal.id}`}
+                              className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline font-medium"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              View Profile <ArrowRight size={9} />
+                            </Link>
                           </div>
                         </div>
                       ))}

@@ -105,6 +105,46 @@ export async function createPerson(person: {
   return pipedriveRequest('/persons', 'POST', person);
 }
 
+export async function getPerson(personId: number) {
+  return pipedriveRequest(`/persons/${personId}`);
+}
+
+export async function getPersonsByDeal(dealId: number) {
+  return pipedriveRequest(`/deals/${dealId}/participants`);
+}
+
+export async function getOrganization(orgId: number) {
+  return pipedriveRequest(`/organizations/${orgId}`);
+}
+
+export async function getOrgPersons(orgId: number) {
+  return pipedriveRequest(`/organizations/${orgId}/persons`);
+}
+
+export async function getDealActivities(dealId: number) {
+  return pipedriveRequest(`/activities?deal_id=${dealId}&limit=50`);
+}
+
+export async function getDealNotes(dealId: number) {
+  return pipedriveRequest(`/notes?deal_id=${dealId}&limit=50`);
+}
+
+export async function getDealFiles(dealId: number) {
+  return pipedriveRequest(`/files?deal_id=${dealId}&limit=50`);
+}
+
+export async function getDealFlow(dealId: number) {
+  return pipedriveRequest(`/deals/${dealId}/flow`);
+}
+
+export async function getDealProducts(dealId: number) {
+  return pipedriveRequest(`/deals/${dealId}/products`);
+}
+
+export async function getDealMailMessages(dealId: number) {
+  return pipedriveRequest(`/deals/${dealId}/mailMessages`);
+}
+
 export function isConfigured(): boolean {
   return !!PIPEDRIVE_API_TOKEN;
 }

@@ -21,6 +21,7 @@ import {
   ChevronRight,
   LogOut,
   User,
+  Users,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
@@ -54,6 +55,12 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/dashboard/build-team', label: 'Build Team', icon: Bot },
       { href: '/dashboard/deploy', label: 'Deploy', icon: Rocket },
       { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
+    ],
+  },
+  {
+    title: 'CLIENTS',
+    items: [
+      { href: '/dashboard/customers', label: 'Customers', icon: Users },
     ],
   },
   {
