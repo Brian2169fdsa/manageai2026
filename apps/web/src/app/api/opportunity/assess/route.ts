@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
       primary_goal,
     };
 
-    const { data: saved, error: dbError } = await supabase
+    const { data: saved, error: dbError } = await getSupabase()
       .from('opportunity_assessments')
       .insert({
         company_name,
