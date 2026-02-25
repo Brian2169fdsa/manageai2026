@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import {
   Building2, User, Mail, Calendar, Tag, Cpu,
   Download, Eye, FileText, Link2, ArrowLeft, Loader2,
-  CheckCircle, AlertCircle, Package, Share2,
+  CheckCircle, AlertCircle, Package, Share2, ThumbsUp, ThumbsDown, RotateCcw,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -49,6 +49,9 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | 'request_revision' | null>(null);
+  const [approvalComments, setApprovalComments] = useState('');
+  const [approvalLoading, setApprovalLoading] = useState(false);
 
   function handleCopyShareLink(type: 'demo' | 'plan') {
     const url = `${window.location.origin}/share/${id}/${type}`;
@@ -118,6 +121,37 @@ export default function TicketDetailPage() {
       toast.error('Download failed');
     } finally {
       setDownloadingId(null);
+    }
+  }
+
+  async function handleApproval(action: 'approve' | 'reject' | 'request_revision') {
+    if (!ticket) return;
+    setApprovalLoading(true);
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, comments: approvalComments || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Approval action failed');
+        return;
+      }
+      toast.success(
+        action === 'approve'
+          ? 'Ticket approved!'
+          : action === 'reject'
+          ? 'Ticket sent back for rebuild'
+          : 'Revision requested'
+      );
+      setTicket((prev) => prev ? { ...prev, status: data.status } : prev);
+      setApprovalAction(null);
+      setApprovalComments('');
+    } catch {
+      toast.error('Failed to process approval action');
+    } finally {
+      setApprovalLoading(false);
     }
   }
 
@@ -269,6 +303,137 @@ export default function TicketDetailPage() {
                 <p className="text-sm text-gray-700 leading-relaxed">{ticket.ai_understanding}</p>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Approval Actions — only shown for REVIEW_PENDING tickets */}
+      {ticket.status === 'REVIEW_PENDING' && (
+        <Card className="border-purple-200 bg-purple-50/30">
+          <CardHeader className="pb-3 pt-4">
+            <CardTitle className="text-sm font-semibold text-purple-900 flex items-center gap-2">
+              <AlertCircle size={14} className="text-purple-600" />
+              Review Required
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-purple-800">
+              This build is ready for your review. Approve it to proceed to deployment, request a revision, or send it back for a full rebuild.
+            </p>
+
+            {/* Comments textarea — shown when reject or request_revision is selected */}
+            {approvalAction && approvalAction !== 'approve' && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-purple-900 uppercase tracking-wide">
+                  {approvalAction === 'reject' ? 'Reason for rejection' : 'Revision notes'}
+                </label>
+                <textarea
+                  value={approvalComments}
+                  onChange={(e) => setApprovalComments(e.target.value)}
+                  placeholder={
+                    approvalAction === 'reject'
+                      ? 'Describe what needs to change before rebuilding...'
+                      : 'Describe what needs to be revised...'
+                  }
+                  rows={3}
+                  className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none"
+                />
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                className={cn(
+                  'gap-1.5',
+                  approvalAction === 'approve'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
+                )}
+                onClick={() => {
+                  if (approvalAction === 'approve') {
+                    handleApproval('approve');
+                  } else {
+                    setApprovalAction('approve');
+                    setApprovalComments('');
+                  }
+                }}
+                disabled={approvalLoading}
+              >
+                {approvalLoading && approvalAction === 'approve' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <ThumbsUp size={12} />
+                )}
+                {approvalAction === 'approve' ? 'Confirm Approve' : 'Approve'}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(
+                  'gap-1.5',
+                  approvalAction === 'request_revision'
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600'
+                    : 'text-amber-700 border-amber-200 hover:bg-amber-50'
+                )}
+                onClick={() => {
+                  if (approvalAction === 'request_revision') {
+                    handleApproval('request_revision');
+                  } else {
+                    setApprovalAction('request_revision');
+                    setApprovalComments('');
+                  }
+                }}
+                disabled={approvalLoading}
+              >
+                {approvalLoading && approvalAction === 'request_revision' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <RotateCcw size={12} />
+                )}
+                {approvalAction === 'request_revision' ? 'Send Revision Request' : 'Request Revision'}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(
+                  'gap-1.5',
+                  approvalAction === 'reject'
+                    ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
+                    : 'text-red-600 border-red-200 hover:bg-red-50'
+                )}
+                onClick={() => {
+                  if (approvalAction === 'reject') {
+                    handleApproval('reject');
+                  } else {
+                    setApprovalAction('reject');
+                    setApprovalComments('');
+                  }
+                }}
+                disabled={approvalLoading}
+              >
+                {approvalLoading && approvalAction === 'reject' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <ThumbsDown size={12} />
+                )}
+                {approvalAction === 'reject' ? 'Confirm Reject' : 'Reject & Rebuild'}
+              </Button>
+
+              {approvalAction && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-muted-foreground"
+                  onClick={() => { setApprovalAction(null); setApprovalComments(''); }}
+                  disabled={approvalLoading}
+                >
+                  Cancel
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

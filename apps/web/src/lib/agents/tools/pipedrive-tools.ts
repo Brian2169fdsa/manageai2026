@@ -8,6 +8,8 @@ import {
   getPipelines,
   getStages,
   getDealsSummary,
+  createDeal,
+  createPerson,
   isConfigured,
 } from '@/lib/integrations/pipedrive';
 
@@ -260,6 +262,124 @@ export const pipedriveTools: AgentTool[] = [
         stages: stageBreakdown,
         total_open_deals: summary?.total_count ?? 0,
         total_pipeline_value: totalValue,
+        duration_ms: Date.now() - start,
+      };
+    },
+  },
+
+  {
+    name: 'createDeal',
+    description:
+      'Create a new deal in Pipedrive CRM. Use when a new prospect is qualified or when converting a ticket inquiry into a pipeline opportunity.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Deal title (typically company name + service, e.g. "Acme Corp — n8n Build")',
+        },
+        value: {
+          type: 'number',
+          description: 'Deal value in USD (optional)',
+        },
+        stage_id: {
+          type: 'number',
+          description: 'Pipeline stage ID (get from getPipelineOverview). Defaults to first stage.',
+        },
+        person_id: {
+          type: 'number',
+          description: 'Pipedrive person ID for the contact (optional — use createPerson first if needed)',
+        },
+        expected_close_date: {
+          type: 'string',
+          description: 'Expected close date in YYYY-MM-DD format (optional)',
+        },
+      },
+      required: ['title'],
+    },
+    execute: async ({ title, value, stage_id, person_id, expected_close_date }: any, _supabase: any) => {
+      const start = Date.now();
+      console.log(`[tool:createDeal] title="${title}", value=${value}`);
+
+      if (!isConfigured()) return { ...NOT_CONFIGURED, duration_ms: Date.now() - start };
+
+      const payload: Record<string, any> = { title };
+      if (value !== undefined) payload.value = value;
+      if (stage_id !== undefined) payload.stage_id = stage_id;
+      if (person_id !== undefined) payload.person_id = person_id;
+      if (expected_close_date) payload.expected_close_date = expected_close_date;
+
+      const result = await createDeal(payload as Parameters<typeof createDeal>[0]);
+
+      if (!result.success) {
+        return { success: false, error: result.error, duration_ms: Date.now() - start };
+      }
+
+      const d: any = result.data;
+      console.log(`[tool:createDeal] Created deal ${d?.id} in ${Date.now() - start}ms`);
+      return {
+        success: true,
+        deal_id: d?.id,
+        title: d?.title,
+        stage: d?.stage_id_name ?? d?.stage_id,
+        value: d?.value ? `$${Number(d.value).toLocaleString()}` : 'No value',
+        message: `Deal "${d?.title}" created (#${d?.id})`,
+        duration_ms: Date.now() - start,
+      };
+    },
+  },
+
+  {
+    name: 'createPerson',
+    description:
+      'Create a new contact/person in Pipedrive CRM. Use before createDeal when the contact does not yet exist in the CRM.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Full name of the contact',
+        },
+        email: {
+          type: 'string',
+          description: 'Email address of the contact (optional)',
+        },
+        phone: {
+          type: 'string',
+          description: 'Phone number of the contact (optional)',
+        },
+        org_id: {
+          type: 'number',
+          description: 'Pipedrive organization ID to link this person to (optional)',
+        },
+      },
+      required: ['name'],
+    },
+    execute: async ({ name, email, phone, org_id }: any, _supabase: any) => {
+      const start = Date.now();
+      console.log(`[tool:createPerson] name="${name}", email=${email}`);
+
+      if (!isConfigured()) return { ...NOT_CONFIGURED, duration_ms: Date.now() - start };
+
+      const payload: Parameters<typeof createPerson>[0] = { name };
+      if (email) payload.email = email;
+      if (phone) payload.phone = phone;
+      if (org_id !== undefined) payload.org_id = org_id;
+
+      const result = await createPerson(payload);
+
+      if (!result.success) {
+        return { success: false, error: result.error, duration_ms: Date.now() - start };
+      }
+
+      const p: any = result.data;
+      console.log(`[tool:createPerson] Created person ${p?.id} in ${Date.now() - start}ms`);
+      return {
+        success: true,
+        person_id: p?.id,
+        name: p?.name,
+        email: Array.isArray(p?.email) ? p.email[0]?.value : p?.email,
+        message: `Person "${p?.name}" created (#${p?.id})`,
         duration_ms: Date.now() - start,
       };
     },

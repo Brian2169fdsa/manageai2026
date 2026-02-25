@@ -75,6 +75,29 @@ export async function getChannelInfo(channel: string) {
   return slackRequest('conversations.info', { channel });
 }
 
+export async function sendMessage(channel: string, text: string, blocks?: any[]) {
+  if (blocks && blocks.length > 0) {
+    return slackRequest('chat.postMessage', { channel, text, blocks });
+  }
+  return slackRequest('chat.postMessage', { channel, text });
+}
+
+export async function createChannel(name: string) {
+  return slackRequest('conversations.create', { name, is_private: false });
+}
+
+export async function uploadFile(channel: string, content: string, filename: string) {
+  return slackRequest('files.uploadV2', { channel_id: channel, content, filename });
+}
+
 export function isConfigured(): boolean {
   return !!SLACK_BOT_TOKEN;
 }
+
+export const CHANNELS = {
+  BUILDS: '#builds',
+  SALES: '#sales',
+  ALERTS: '#alerts',
+  GENERAL: '#general',
+  LEADERSHIP: '#leadership',
+} as const;

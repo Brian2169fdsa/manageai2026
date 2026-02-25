@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, analysisCompleteHtml } from '@/lib/email/notifications';
+import { PDFParse } from 'pdf-parse';
 
 // Allow up to 5 minutes for AI analysis
 export const maxDuration = 300;
@@ -35,22 +36,35 @@ function extractJson(raw: string): Record<string, unknown> {
   }
 }
 
-/** Download and extract text from a Supabase Storage file (text-based files only) */
+/** Download and extract text from a Supabase Storage file (text-based files and PDFs) */
 async function extractFileText(filePath: string, mimeType?: string | null): Promise<string | null> {
   const textMimes = ['text/plain', 'text/csv', 'text/html', 'application/json', 'text/markdown', 'text/'];
   const textExts = ['.txt', '.csv', '.json', '.md', '.xml', '.yaml', '.yml', '.log'];
+  const isPdf = mimeType === 'application/pdf' || filePath.toLowerCase().endsWith('.pdf');
   const isLikelyText =
     textMimes.some((m) => mimeType?.startsWith(m)) ||
     textExts.some((ext) => filePath.toLowerCase().endsWith(ext));
 
-  if (!isLikelyText) return null;
+  if (!isPdf && !isLikelyText) return null;
 
   try {
     const { data, error } = await supabase.storage.from('ticket-files').download(filePath);
     if (error || !data) return null;
+
+    if (isPdf) {
+      const uint8Array = new Uint8Array(await (data as Blob).arrayBuffer());
+      const parser = new PDFParse({ data: uint8Array });
+      const textResult = await parser.getText();
+      await parser.destroy();
+      const text = textResult.text.trim();
+      console.log('[analyze-ticket] PDF extracted:', filePath, text.length, 'chars');
+      return text.slice(0, 8000); // Cap at 8KB per file
+    }
+
     const text = await (data as Blob).text();
     return text.slice(0, 8000); // Cap at 8KB per file to avoid overwhelming context
-  } catch {
+  } catch (err) {
+    console.error('[analyze-ticket] extractFileText error for', filePath, ':', (err as Error).message);
     return null;
   }
 }
@@ -178,8 +192,8 @@ export async function POST(req: NextRequest) {
               console.log('[analyze-ticket] Extracted text from:', asset.file_name, text.length, 'chars');
               return `--- ${asset.file_name} (${asset.category}) ---\n${text}`;
             } else {
-              console.log('[analyze-ticket] Could not extract text from:', asset.file_name, '(binary/PDF)');
-              return `--- ${asset.file_name} (${asset.category}) --- [Uploaded document — binary/PDF, filename only]`;
+              console.log('[analyze-ticket] Could not extract text from:', asset.file_name, '(unsupported binary)');
+              return `--- ${asset.file_name} (${asset.category}) --- [Uploaded document — binary format, filename only]`;
             }
           })
         );

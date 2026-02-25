@@ -1,5 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { AgentTool } from '../types';
+import { getDeal, isConfigured } from '@/lib/integrations/pipedrive';
+
+const VALID_STATUSES = [
+  'SUBMITTED', 'CONTEXT_PENDING', 'ANALYZING', 'QUESTIONS_PENDING',
+  'BUILDING', 'REVIEW_PENDING', 'APPROVED', 'DEPLOYED', 'CLOSED',
+];
+
+const NOT_CONFIGURED = {
+  success: false,
+  error: 'Pipedrive not configured. Add PIPEDRIVE_API_TOKEN to environment variables.',
+  demo_mode: true,
+};
 
 export const platformTicketsTools: AgentTool[] = [
   {
@@ -176,6 +188,164 @@ export const platformTicketsTools: AgentTool[] = [
         `[tool:listRecentTickets] Returned ${data?.length ?? 0} tickets in ${Date.now() - start}ms`
       );
       return { tickets: data ?? [], count: data?.length ?? 0 };
+    },
+  },
+
+  {
+    name: 'updateTicketStatus',
+    description:
+      'Update the status of a ticket. Valid statuses: SUBMITTED, CONTEXT_PENDING, ANALYZING, QUESTIONS_PENDING, BUILDING, REVIEW_PENDING, APPROVED, DEPLOYED, CLOSED',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ticket_id: {
+          type: 'string',
+          description: 'The UUID of the ticket to update',
+        },
+        status: {
+          type: 'string',
+          description:
+            'New status. One of: SUBMITTED, CONTEXT_PENDING, ANALYZING, QUESTIONS_PENDING, BUILDING, REVIEW_PENDING, APPROVED, DEPLOYED, CLOSED',
+        },
+      },
+      required: ['ticket_id', 'status'],
+    },
+    execute: async ({ ticket_id, status }: any, supabase: any) => {
+      const start = Date.now();
+      if (!VALID_STATUSES.includes(status)) {
+        throw new Error(
+          `Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(', ')}`
+        );
+      }
+
+      const { data, error } = await supabase
+        .from('tickets')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', ticket_id)
+        .select('id, status, project_name, company_name')
+        .single();
+
+      if (error) throw new Error(`updateTicketStatus failed: ${error.message}`);
+      console.log(
+        `[tool:updateTicketStatus] Ticket ${ticket_id} → ${status} in ${Date.now() - start}ms`
+      );
+      return { success: true, ticket_id, new_status: status, ticket: data };
+    },
+  },
+
+  {
+    name: 'assignTicket',
+    description:
+      'Assign a ticket to a team member by logging the assignment in the ticket description field.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ticket_id: {
+          type: 'string',
+          description: 'The UUID of the ticket to assign',
+        },
+        assignee_name: {
+          type: 'string',
+          description: 'Full name of the team member to assign the ticket to',
+        },
+        note: {
+          type: 'string',
+          description: 'Optional note to include with the assignment',
+        },
+      },
+      required: ['ticket_id', 'assignee_name'],
+    },
+    execute: async ({ ticket_id, assignee_name, note }: any, supabase: any) => {
+      const start = Date.now();
+      const assignmentNote = note
+        ? `Assigned to ${assignee_name}: ${note}`
+        : `Assigned to ${assignee_name}`;
+
+      const { data, error } = await supabase
+        .from('tickets')
+        .update({ description: assignmentNote, updated_at: new Date().toISOString() })
+        .eq('id', ticket_id)
+        .select('id, project_name, company_name, description')
+        .single();
+
+      if (error) throw new Error(`assignTicket failed: ${error.message}`);
+      console.log(
+        `[tool:assignTicket] Ticket ${ticket_id} assigned to ${assignee_name} in ${Date.now() - start}ms`
+      );
+      return { success: true, ticket_id, assignee_name, note: assignmentNote, ticket: data };
+    },
+  },
+
+  {
+    name: 'createTicketFromDeal',
+    description:
+      'Create a new ManageAI ticket from a Pipedrive deal. Fetches deal details and pre-fills ticket fields. Use when a deal closes and needs to enter the build pipeline.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        deal_id: {
+          type: 'number',
+          description: 'Pipedrive deal ID to convert into a ticket',
+        },
+        platform: {
+          type: 'string',
+          description: 'Automation platform: n8n, make, or zapier (default: n8n)',
+        },
+        priority: {
+          type: 'string',
+          description: 'Ticket priority: low, medium, high, or critical (default: medium)',
+        },
+      },
+      required: ['deal_id'],
+    },
+    execute: async ({ deal_id, platform = 'n8n', priority = 'medium' }: any, supabase: any) => {
+      const start = Date.now();
+      console.log(`[tool:createTicketFromDeal] deal_id=${deal_id}, platform=${platform}`);
+
+      if (!isConfigured()) {
+        return { ...NOT_CONFIGURED, duration_ms: Date.now() - start };
+      }
+
+      const dealResult = await getDeal(Number(deal_id));
+      if (!dealResult.success) {
+        throw new Error(`Failed to fetch Pipedrive deal: ${(dealResult as any).error}`);
+      }
+
+      const d: any = dealResult.data;
+      const companyName = d.org_name?.name ?? d.org_name ?? 'Unknown Company';
+      const contactName = d.person_name?.name ?? d.person_name ?? '';
+      const contactEmail = Array.isArray(d.person_email)
+        ? (d.person_email.find((e: any) => e.primary)?.value ?? d.person_email[0]?.value ?? '')
+        : (d.person_email ?? '');
+
+      const { data, error } = await supabase
+        .from('tickets')
+        .insert({
+          company_name: companyName,
+          contact_name: contactName,
+          contact_email: contactEmail,
+          project_name: d.title,
+          ticket_type: platform,
+          status: 'SUBMITTED',
+          what_to_build: d.title,
+          priority,
+          description: `Created from Pipedrive deal #${deal_id}`,
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(`createTicketFromDeal failed: ${error.message}`);
+
+      console.log(
+        `[tool:createTicketFromDeal] Created ticket ${data.id} from deal ${deal_id} in ${Date.now() - start}ms`
+      );
+      return {
+        success: true,
+        ticket_id: data.id,
+        ticket: data,
+        source_deal_id: deal_id,
+        duration_ms: Date.now() - start,
+      };
     },
   },
 ];

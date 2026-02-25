@@ -84,6 +84,27 @@ export async function searchDeals(term: string) {
   return pipedriveRequest(`/deals/search?term=${encodeURIComponent(term)}&limit=10`);
 }
 
+export async function createDeal(deal: {
+  title: string;
+  value?: number;
+  currency?: string;
+  stage_id?: number;
+  person_id?: number;
+  org_id?: number;
+  expected_close_date?: string;
+}) {
+  return pipedriveRequest('/deals', 'POST', deal);
+}
+
+export async function createPerson(person: {
+  name: string;
+  email?: string | { value: string; primary?: boolean }[];
+  phone?: string | { value: string; primary?: boolean }[];
+  org_id?: number;
+}) {
+  return pipedriveRequest('/persons', 'POST', person);
+}
+
 export function isConfigured(): boolean {
   return !!PIPEDRIVE_API_TOKEN;
 }
