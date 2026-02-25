@@ -1,514 +1,731 @@
-# ManageAI 2026 — Claude Code Instructions
+# CLAUDE.md — ManageAI Platform
+## Master Build Instructions for Claude Code
+### Last Updated: February 24, 2026 | Version 2.0
 
-## PRIORITY: Ship before 2pm. Login → Sidebar → Ticket Wizard → AI Builder → Dashboard.
+---
 
-## Repo Structure
+## WHAT THIS IS
+
+ManageAI is an **AI automation agency** serving SMB clients. This platform (`manageai2026/apps/web`) is the **internal operating system** for the ManageAI team AND the delivery infrastructure for client services. It is not a client-facing SaaS — it is the factory floor, the command center, and the service delivery engine all in one.
+
+**Live URL:** https://web-manage-ai1.vercel.app
+**Repo:** github.com/Brian2169fdsa/manageai2026
+**Stack:** Next.js 16 App Router + TypeScript + Supabase + Claude API + Tailwind + shadcn/ui
+**Deploy:** Vercel — auto-deploys on `git push origin main`
+
+---
+
+## THE TEAM — WHO OWNS WHAT
+
+| Person | Title | Owns in Platform | Their Agent Does |
+|--------|-------|-----------------|-----------------|
+| **Dave** | CEO | CEO Dashboard — company health, revenue, team capacity, client portfolio | Morning brief, revenue forecasts, board-ready summaries, escalation alerts |
+| **Chad** | Product Lead | Product Dashboard — roadmap, Figma handoffs, feature tracking, client feedback | Aggregates client requests into features, tracks build quality, syncs with design system |
+| **Brian** | AI & Automation Build Lead | Engineering Dashboard + Build Pipeline — the core engine | Auto-matches templates, validates workflow JSON, triggers rebuilds, manages build queue |
+| **Dan** | Customer Delivery Lead | Delivery Dashboard — client health, active projects, deployments, reviews | Monitors all deployed automations, flags issues, schedules client reviews, generates performance reports |
+| **Tony** | Sales | Sales Dashboard — Pipedrive pipeline, opportunity assessments, proposals | Creates/updates deals, drafts proposals, generates opportunity assessments, schedules demos |
+| **Robert** | Marketing | Marketing Dashboard — content calendar, campaigns, social, leads | Drafts content, schedules posts, tracks campaign performance, generates case studies from completed builds |
+| **Jacob** | Developer | Engineering Dashboard (shared with Brian) — deployments, infrastructure, code quality | Deploy monitoring, error tracking, CI/CD notifications |
+| **Pat** | Consumer App | Product Dashboard (shared with Chad) — client portal, consumer UX | Client portal health, feature adoption, consumer feedback |
+
+---
+
+## WHAT MANAGEAI SELLS (Know This — It Drives Platform Design)
+
+### Service Lines
+1. **AI Strategy & Roadmap** — Free opportunity assessment → paid AI Blueprint → 90-day implementation plan. Tony leads, Chad shapes, Dave approves.
+2. **Data + AI Infrastructure** — Connect client systems, build knowledge bases (RAG/vector), set up MCP servers, organize their "company brain"
+3. **Custom AI Teammates** — Deploy named AI agents into client businesses:
+   - **Rebecka** — Executive Assistant (scheduling, email, meeting summaries, agenda prep)
+   - **Daniel** — Sales Assistant (lead lists, CRM management, outreach, pre-call briefs)
+   - **Sarah** — Marketing Assistant (social, blogs, newsletters, ad copy, brand voice)
+   - **Andrew** — Operations Assistant (ticket response, task routing, project coordination, reporting)
+4. **Automation Builds** — n8n / Make.com / Zapier workflows built from tickets
+5. **Ongoing AI Management** — Monthly reviews, performance optimization, expansion planning. **This is the recurring revenue.**
+
+### The Client Journey
+```
+Lead comes in (website, referral, outbound)
+  → Tony runs Opportunity Assessment (free)
+    → Team generates AI Blueprint (strategy + roadmap)
+      → Proposal sent → Deal closed in Pipedrive
+        → Ticket created → Brian/Jacob build automations
+          → Dan oversees delivery → Deployed to client systems
+            → Ongoing management (Dan + AI agents)
+              → Expansion opportunities surfaced → Tony re-engages
+```
+
+---
+
+## PLATFORM VISION — WHAT WE'RE BUILDING
+
+### The Three Layers
+
+**Layer 1 — Build Engine** ✅ COMPLETE
+The production line. Tickets → AI analysis → 3 deliverables → one-click deploy. Works for n8n, Make.com, Zapier. 8,076 templates. This generates the core revenue.
+
+**Layer 2 — Agency Operations** 🔨 BUILDING NOW
+Every team member has an AI agent that works alongside them — not just reading data but taking actions. Brian's agent manages the build queue. Dan's agent monitors client health. Tony's agent manages his pipeline. These agents are connected to every system and update the platform in real time.
+
+**Layer 3 — Client Service Delivery** 📋 PLANNED
+The platform becomes the delivery mechanism for what ManageAI sells. Client portals, deployed automation monitoring, AI Blueprint generator, AI teammate management, performance reports. The agency's service IS the platform.
+
+---
+
+## AGENTIC TEAMMATES — THE CORE PHILOSOPHY
+
+Every agent in this platform is a **fully connected teammate** that:
+- Has read AND write access to the systems it owns
+- Takes real actions (not just suggestions)
+- Updates the platform when it acts (creates tickets, moves deals, sends emails, posts Slack updates)
+- Works autonomously on routine tasks and escalates decisions to humans
+- Communicates with other agents through the `activity_events` table
+
+### What "Fully Agentic" Means Per Role
+
+**Dave's Executive Agent (CEO)**
+- Every morning: generates pipeline summary, revenue forecast, team capacity report, client health overview
+- Alerts: flags stalled deals, overdue builds, unhappy clients, budget overruns
+- Can: approve deployments, reassign resources, send executive communications
+- Escalates: anything requiring strategic decisions
+
+**Brian's Engineering Agent**
+- Monitors build queue continuously
+- Auto-matches incoming tickets to templates
+- Flags complex builds that need human review
+- Can: trigger rebuilds, validate workflow JSON, update ticket status, assign builds to Jacob
+- Notifies Dan when builds are ready for delivery review
+- Escalates: novel requirements with no template match, client system access issues
+
+**Dan's Delivery Agent**
+- Owns post-deployment: monitors all live automations for errors/failures
+- Generates weekly client performance reports automatically
+- Schedules monthly review calls proactively
+- Can: update delivery status, create follow-up tickets, flag expansion opportunities to Tony
+- Escalates: client-reported issues, automation failures, churn signals
+
+**Tony's Sales Agent**
+- Manages Pipedrive as a co-pilot: updates stages, logs calls, drafts follow-ups
+- Generates opportunity assessments from call transcripts
+- Can: create deals, create persons, add notes, draft proposals, create tickets when deals close
+- Escalates: pricing decisions, strategic partnership decisions
+
+**Robert's Marketing Agent**
+- Manages content calendar and social scheduling
+- Generates case studies from completed builds automatically
+- Can: draft blog posts, schedule social content, track campaign metrics, generate lead reports
+- Escalates: brand decisions, campaign budget approvals
+
+**Chad's Product Agent**
+- Aggregates client feedback from all tickets and delivery notes
+- Identifies patterns in feature requests
+- Can: create product briefs, update roadmap items, link Figma files to features
+- Escalates: prioritization decisions, design reviews
+
+---
+
+## CURRENT PLATFORM STATUS (Audited Feb 24, 2026)
+
+### ✅ COMPLETE — DO NOT MODIFY UNLESS TASK REQUIRES IT
+
+| Feature | Location | Notes |
+|---------|----------|-------|
+| Auth | `app/login/` + `contexts/AuthContext.tsx` | Supabase email/password |
+| Ticket Wizard | `app/portal/new-ticket/` | 3-step wizard |
+| AI Analysis | `app/api/analyze-ticket/` | Claude Sonnet, platform-agnostic |
+| AI Build Generation | `app/api/generate-build/` | 3 artifacts per ticket |
+| n8n Builder | `lib/platforms/` | Production-grade + MCP |
+| Make.com Builder | `lib/platforms/make/` | module-reference (160L), prompt-builder (313L) |
+| Zapier Builder | `lib/platforms/zapier/` | app-reference (150L), prompt-builder (207L) |
+| Template Library | `app/dashboard/templates/` | 8,076 templates across 3 platforms |
+| All 3 Deployers | `lib/deploy/` | n8n (93L), Make.com (92L), Zapier (470L) |
+| Deploy Settings | `app/dashboard/settings/deploy/` | Full config UI |
+| Agent Framework | `app/api/agent/chat/` | 8-iteration loop, tool_use |
+| 5 Agent Configs | `lib/agents/configs/index.ts` | All 5 wired with Agent buttons |
+| Pipedrive | `lib/integrations/pipedrive.ts` | LIVE — real API |
+| Analytics | `app/dashboard/analytics/` | Real Recharts + Supabase |
+| All Department Dashboards | `app/dashboard/[dept]/` | Exist, Agent buttons wired |
+
+### 🔴 MUST FIX NOW
+
+| Gap | Why Critical | Fix Location |
+|-----|-------------|-------------|
+| PDF text extraction | Clients upload PDF SOWs — Claude gets zero context | `app/api/analyze-ticket/route.ts` |
+| Ticket Approve/Reject UI | API exists, no buttons — builds can't move to APPROVED | `app/dashboard/tickets/[id]/page.tsx` |
+
+### 🟡 BUILD NEXT
+
+| Feature | Why | Workstream |
+|---------|-----|------------|
+| Customer/Client pages | Tony + Dan's primary work surface | A |
+| Slack real integration | Agents post to #builds, #sales, #alerts | C |
+| Resend email live | Client notifications, agent emails | Add key |
+
+---
+
+## ENVIRONMENT VARIABLES
+
+```bash
+# Currently set (Production + Local after vercel env pull)
+NEXT_PUBLIC_SUPABASE_URL=SET
+NEXT_PUBLIC_SUPABASE_ANON_KEY=SET
+SUPABASE_SERVICE_ROLE_KEY=SET
+ANTHROPIC_API_KEY=SET
+PIPEDRIVE_API_TOKEN=SET
+NEXT_PUBLIC_PIPEDRIVE_COMPANY_DOMAIN=manageai
+NEXT_PUBLIC_APP_URL=SET
+
+# Need to add
+RESEND_API_KEY          # Email goes live instantly
+SLACK_BOT_TOKEN         # Slack agent actions go live
+```
+
+---
+
+## REPOSITORY STRUCTURE
+
 ```
 manageai2026/
-└── apps/
-    └── web/                    # Next.js 16.1.6 (App Router)
-        ├── src/app/            # Pages live here
-        ├── package.json
-        └── next.config.ts
-```
-All work happens in `apps/web/`. This is Next.js 16 with React 19, Tailwind v4, TypeScript 5, Geist fonts.
-
-## Tech Stack
-- Next.js 16 App Router (NO pages router, NO react-router-dom)
-- React 19
-- Tailwind CSS v4
-- Supabase (Auth + Postgres + Storage + Edge Functions)
-- shadcn/ui for components (install with: `npx shadcn@latest init` then `npx shadcn@latest add [component]`)
-- Zod for validation
-- Lucide React for icons
-- Sonner for toasts
-
-## Install These First
-```bash
-cd apps/web
-npm install @supabase/supabase-js zod sonner lucide-react
-npx shadcn@latest init
-npx shadcn@latest add button input dialog card tabs badge textarea select progress
-```
-
-## Environment Variables (create apps/web/.env.local)
-```
-NEXT_PUBLIC_SUPABASE_URL=<brian-will-provide>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<brian-will-provide>
-SUPABASE_SERVICE_ROLE_KEY=<brian-will-provide>
-ANTHROPIC_API_KEY=<brian-will-provide>
-```
-
----
-
-## APP STRUCTURE TO BUILD
-
-```
-apps/web/src/
-├── app/
-│   ├── layout.tsx              # Root layout with AuthProvider + sidebar
-│   ├── page.tsx                # Redirect: if logged in → /dashboard, else → /login
-│   ├── login/
-│   │   └── page.tsx            # Login/signup page (split panel design)
-│   ├── reset-password/
-│   │   └── page.tsx            # Password reset
-│   ├── portal/
-│   │   ├── layout.tsx          # Portal layout (sidebar + topbar)
-│   │   ├── new-ticket/
-│   │   │   └── page.tsx        # 3-step ticket intake wizard
-│   │   └── ticket/
-│   │       └── [id]/
-│   │           └── page.tsx    # AI review + outputs for a ticket
-│   └── dashboard/
-│       ├── layout.tsx          # Dashboard layout (same sidebar)
-│       ├── page.tsx            # Overview / home
-│       └── tickets/
-│           ├── page.tsx        # Ticket list with customer cards
-│           └── [id]/
-│               └── page.tsx    # Ticket detail + artifacts view
-├── components/
-│   ├── ui/                     # shadcn/ui (auto-generated)
-│   ├── layout/
-│   │   ├── Sidebar.tsx         # Left sidebar navigation
-│   │   └── TopBar.tsx          # Top bar with user menu
-│   ├── auth/
-│   │   ├── LoginCard.tsx       # Login form (OAuth + email/password)
-│   │   ├── OAuthButton.tsx     # OAuth provider button
-│   │   ├── ForgotPasswordModal.tsx
-│   │   └── icons/              # Google, Apple, Microsoft SVGs
-│   ├── portal/
-│   │   ├── TicketWizardStep1.tsx  # Company + build type form
-│   │   ├── TicketWizardStep2.tsx  # File upload + vault
-│   │   └── TicketWizardStep3.tsx  # AI review + Q&A + outputs
-│   └── dashboard/
-│       ├── TicketList.tsx
-│       └── CustomerCard.tsx
-├── lib/
-│   ├── supabase/
-│   │   ├── client.ts           # Browser Supabase client
-│   │   └── server.ts           # Server-side Supabase client
-│   └── utils.ts                # cn() helper for tailwind merge
-├── contexts/
-│   └── AuthContext.tsx          # Auth state provider
-└── types/
-    └── index.ts                # Shared TypeScript types
+  apps/web/                           # THE ONLY PROJECT — not connect-hub, not manageai (V1)
+    src/
+      app/
+        api/
+          agent/chat/                 # ⛔ DO NOT TOUCH — agentic loop
+          analyze-ticket/             # ⛔ DO NOT TOUCH — AI analysis
+          generate-build/             # ⚠️ Only touch platform branches
+          pipedrive/                  # deals, pipeline (+ deals/[id] coming)
+          templates/                  # route, counts, [id]
+          deploy/                     # route, config
+          tickets/[id]/               # approve, status
+          opportunity/                # 🆕 PLANNED — assessment generator
+          blueprint/                  # 🆕 PLANNED — AI Blueprint generator
+        dashboard/
+          ceo/                        # Dave's dashboard
+          sales/                      # Tony's dashboard
+          marketing/                  # Robert's dashboard
+          product/                    # Chad's dashboard
+          engineering/                # Brian + Jacob's dashboard
+          delivery/                   # Dan's dashboard ← needs major enrichment
+          customers/                  # 🆕 WORKSTREAM A — not built yet
+          tickets/                    # Ticket list + detail
+          templates/                  # Template browser
+          build-team/                 # Build queue view
+          deploy/                     # Deployment management
+          analytics/                  # Platform analytics
+          settings/deploy/            # Deploy config
+          client-portal/              # 🆕 PLANNED — client-facing view
+        portal/
+          new-ticket/                 # Ticket wizard
+        share/[ticketId]/             # Public share links
+        login/
+      components/
+        layout/
+          Sidebar.tsx                 # ⚠️ COORDINATE — only one instance edits at a time
+          TopBar.tsx
+        agents/
+          AgentButton.tsx
+          AgentChat.tsx
+        ui/                           # shadcn/ui
+      lib/
+        agents/
+          configs/index.ts            # All 5 agent definitions
+          tools/                      # Tool implementations
+        integrations/
+          pipedrive.ts                # LIVE
+          slack.ts                    # 🆕 WORKSTREAM C
+          resend.ts                   # 🆕 PLANNED
+          calendar.ts                 # 🆕 PLANNED
+        platforms/
+          make/                       # Make.com builder
+          zapier/                     # Zapier builder
+        deploy/
+          n8n-deployer.ts
+          make-deployer.ts
+          zapier-deployer.ts
+        monitoring/                   # 🆕 PLANNED — deployed automation health checks
+        reporting/                    # 🆕 PLANNED — client performance reports
+      contexts/
+        AuthContext.tsx
+        OrgContext.tsx
+      types/
+    scripts/
+      seed-make-templates.ts
+      seed-zapier-templates.ts
+      ingest-templates.ts
+    .env.local                        # ⛔ NEVER COMMIT
+    CLAUDE.md                         # This file
 ```
 
 ---
 
-## BUILD ORDER (Do these in sequence)
+## DATABASE SCHEMA
 
-### PHASE 1: Foundation (30 min)
-1. Install dependencies (shadcn, supabase, zod, sonner, lucide)
-2. Create `lib/supabase/client.ts` (browser client)
-3. Create `lib/supabase/server.ts` (server client using cookies)
-4. Create `contexts/AuthContext.tsx` (adapted from spec below)
-5. Create `types/index.ts` with all type definitions
-6. Update root `layout.tsx` to wrap with AuthProvider + Sonner Toaster
+### Existing Tables (All have RLS)
+- **tickets** — id, org_id, company_name, contact_name, contact_email, project_name, ticket_type, status, priority, what_to_build, expected_outcome, ai_summary, ai_questions (JSONB), ai_understanding, notes, created_by, created_at
+- **ticket_assets** — uploads, transcripts, links per ticket
+- **ticket_artifacts** — build_plan, solution_demo, workflow_json, ai_analysis per ticket
+- **templates** — 8,076 rows, platform (n8n|make|zapier), workflow_json (JSONB)
+- **deployments** — deployment records with status + platform URLs
+- **ticket_approvals** — approval workflow records
+- **organizations** — multi-tenant orgs (settings JSONB has deploy configs)
+- **org_members** — user-to-org with role + department
+- **activity_events** — agent action log + inter-agent communication bus
+- **agent_conversations** — conversation history per agent per user
+- **agent_tool_logs** — every tool execution logged
 
-### PHASE 2: Login Page (30 min)
-7. Create `login/page.tsx` — split panel: left = brand + tagline, right = login card
-8. Create `LoginCard.tsx` — OAuth buttons (Google/Apple/Microsoft) + email/password + signup toggle
-9. Create `OAuthButton.tsx`, icon components, `ForgotPasswordModal.tsx`
-10. Create `reset-password/page.tsx`
-11. Root `page.tsx` — redirect logic (logged in → /dashboard, else → /login)
-
-### PHASE 3: Sidebar Layout (20 min)
-12. Create `Sidebar.tsx` — left nav with:
-    - MANAGE AI logo at top
-    - Nav items: Dashboard, New Ticket, Tickets, Settings
-    - User avatar + sign out at bottom
-    - Collapsed/expanded toggle
-13. Create `TopBar.tsx` — breadcrumb + user menu
-14. Create `portal/layout.tsx` and `dashboard/layout.tsx` using sidebar
-
-### PHASE 4: Ticket Wizard (45 min)
-15. Create `portal/new-ticket/page.tsx` — 3-step wizard container with progress bar
-16. **Step 1 (TicketWizardStep1.tsx):**
-    - Company Name, Contact Name, Contact Email
-    - Project Name, Description
-    - **Build Type** — big card selector: n8n | Make.com | Zapier
-    - What needs to be built (textarea)
-    - Expected outcome (textarea)
-    - Priority selector
-17. **Step 2 (TicketWizardStep2.tsx):**
-    - Drag-and-drop file upload zone (PDF, DOCX, TXT, CSV, PNG, JPG)
-    - File list with type badges (auto-categorize: sow, specs, screenshots, data)
-    - Paste transcript textarea
-    - Link URL input
-    - "Knowledge Vault" section with "Coming Soon" badge
-18. **Step 3 (TicketWizardStep3.tsx):**
-    - Loading state: "AI is analyzing your project..."
-    - AI Overview section (summary of understanding)
-    - Questions section (AI asks clarifying questions, user answers inline)
-    - "Submit Answers" button → AI re-analyzes
-    - Deliverables section (appears after AI builds):
-      - Build Plan card [View] [Download]
-      - Solution Demo card [View] [Download]  
-      - Workflow JSON card [Download]
-
-### PHASE 5: AI Integration (30 min)
-19. Create API route `app/api/analyze-ticket/route.ts`:
-    - Accepts ticket_id
-    - Fetches ticket + assets from Supabase
-    - Calls Claude API with system prompt (see below)
-    - Returns {summary, questions, ready_to_build}
-    - Updates ticket in DB
-20. Create API route `app/api/generate-build/route.ts`:
-    - Accepts ticket_id (must be in BUILDING status)
-    - Calls Claude to generate build plan, solution demo, workflow JSON
-    - Saves artifacts to Supabase Storage
-    - Creates artifact records in DB
-    - Updates ticket status to REVIEW_PENDING
-
-### PHASE 6: Dashboard (30 min)
-21. Create `dashboard/page.tsx` — overview with ticket counts by status
-22. Create `dashboard/tickets/page.tsx` — ticket list table
-23. Create `dashboard/tickets/[id]/page.tsx` — customer card + artifact viewer
-24. Customer card shows: company info, status badge, all artifacts with view/download
-
-### PHASE 7: Deploy (10 min)
-25. Push to Git, deploy on Vercel
-26. Set environment variables in Vercel dashboard
-27. Test full flow end-to-end
-
----
-
-## DATABASE TABLES (Run in Supabase SQL Editor)
-
+### Planned New Tables
 ```sql
--- Tickets table
-CREATE TABLE IF NOT EXISTS tickets (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  company_name TEXT NOT NULL,
-  company_domain TEXT,
-  contact_name TEXT NOT NULL,
-  contact_email TEXT NOT NULL,
-  project_name TEXT,
-  description TEXT,
-  ticket_type TEXT NOT NULL DEFAULT 'n8n' CHECK (ticket_type IN ('n8n', 'make', 'zapier')),
-  status TEXT NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN (
-    'SUBMITTED','CONTEXT_PENDING','ANALYZING','QUESTIONS_PENDING',
-    'BUILDING','REVIEW_PENDING','APPROVED','DEPLOYED','CLOSED'
-  )),
-  priority TEXT DEFAULT 'medium' CHECK (priority IN ('low','medium','high','critical')),
-  what_to_build TEXT,
-  expected_outcome TEXT,
-  trigger_event TEXT,
-  systems_involved TEXT[],
-  constraints TEXT,
-  ai_summary TEXT,
-  ai_questions JSONB DEFAULT '[]'::jsonb,
-  ai_understanding TEXT,
-  ready_to_build BOOLEAN DEFAULT false,
-  recommended_platform TEXT,
-  complexity_estimate TEXT,
-  created_by UUID REFERENCES auth.users(id),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
+-- Client accounts (one per ManageAI client)
+client_accounts (
+  id UUID PK,
+  org_id UUID FK,           -- Links to our org
+  company_name TEXT,
+  pipedrive_deal_id INTEGER, -- Links to Pipedrive
+  status TEXT,              -- prospect|active|at_risk|churned
+  plan TEXT,                -- strategy|build|management|enterprise
+  health_score INTEGER,     -- 0-100, auto-calculated
+  assigned_to UUID,         -- Dan's user_id (delivery owner)
+  created_at TIMESTAMPTZ
+)
 
--- Ticket assets (uploaded files)
-CREATE TABLE IF NOT EXISTS ticket_assets (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  ticket_id UUID REFERENCES tickets(id) ON DELETE CASCADE,
-  asset_type TEXT NOT NULL DEFAULT 'file' CHECK (asset_type IN ('file','transcript','vault_ref','link')),
-  file_name TEXT,
-  file_path TEXT,
+-- Deployed automations per client
+client_automations (
+  id UUID PK,
+  client_id UUID FK,
+  ticket_id UUID FK,
+  platform TEXT,            -- n8n|make|zapier
+  external_id TEXT,         -- ID in their platform
   external_url TEXT,
-  mime_type TEXT,
-  file_size INTEGER,
-  category TEXT DEFAULT 'other' CHECK (category IN ('sow','specs','screenshots','data','transcript','other')),
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+  status TEXT,              -- active|paused|error|unknown
+  last_checked TIMESTAMPTZ,
+  last_run TIMESTAMPTZ,
+  run_count INTEGER,
+  error_count INTEGER,
+  health TEXT               -- healthy|degraded|failing
+)
 
--- Ticket artifacts (AI-generated outputs)
-CREATE TABLE IF NOT EXISTS ticket_artifacts (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  ticket_id UUID REFERENCES tickets(id) ON DELETE CASCADE,
-  artifact_type TEXT NOT NULL CHECK (artifact_type IN ('build_plan','solution_demo','workflow_json','ai_analysis')),
-  file_name TEXT NOT NULL,
-  file_path TEXT NOT NULL,
-  version INTEGER DEFAULT 1,
-  metadata JSONB DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+-- Performance reports
+client_reports (
+  id UUID PK,
+  client_id UUID FK,
+  report_type TEXT,         -- monthly|quarterly|incident
+  period_start DATE,
+  period_end DATE,
+  content TEXT,             -- HTML report content
+  metrics JSONB,            -- automation stats, ROI estimates
+  sent_at TIMESTAMPTZ,
+  created_by TEXT           -- 'agent' or user_id
+)
 
--- Create storage bucket for ticket files
-INSERT INTO storage.buckets (id, name, public) VALUES ('ticket-files', 'ticket-files', false)
-ON CONFLICT (id) DO NOTHING;
+-- AI teammate deployments
+teammate_deployments (
+  id UUID PK,
+  client_id UUID FK,
+  teammate TEXT,            -- rebecka|daniel|sarah|andrew
+  status TEXT,              -- active|paused|configuring
+  config JSONB,             -- system prompt overrides, tool access
+  deployed_at TIMESTAMPTZ,
+  last_active TIMESTAMPTZ
+)
 
--- RLS policies (permissive for MVP — tighten later)
-ALTER TABLE tickets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ticket_assets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ticket_artifacts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Allow all for authenticated users" ON tickets FOR ALL USING (auth.uid() IS NOT NULL);
-CREATE POLICY "Allow all for authenticated users" ON ticket_assets FOR ALL USING (auth.uid() IS NOT NULL);
-CREATE POLICY "Allow all for authenticated users" ON ticket_artifacts FOR ALL USING (auth.uid() IS NOT NULL);
-
--- Storage policy
-CREATE POLICY "Allow authenticated uploads" ON storage.objects FOR ALL USING (auth.uid() IS NOT NULL AND bucket_id = 'ticket-files');
+-- Opportunity assessments
+opportunity_assessments (
+  id UUID PK,
+  pipedrive_deal_id INTEGER,
+  company_name TEXT,
+  contact_name TEXT,
+  transcript TEXT,          -- call transcript or notes
+  assessment JSONB,         -- AI-generated assessment
+  roi_estimate JSONB,       -- per automation ROI breakdown
+  recommended_automations JSONB,
+  status TEXT,              -- draft|sent|converted
+  created_at TIMESTAMPTZ
+)
 ```
 
 ---
 
-## LOGIN PAGE DESIGN SPEC
+## TICKET STATUS STATE MACHINE
+```
+SUBMITTED → ANALYZING → QUESTIONS_PENDING → BUILDING → REVIEW_PENDING → APPROVED → DEPLOYED → CLOSED
+```
 
-Split-panel layout:
-- **Left panel** (desktop only): Dark/light background, large "MANAGE AI" logo, tagline: "AI Isn't the Future. It's How Your Team Wins Right Now."
-- **Right panel**: Centered login card with:
-  - Title: "Sign in to Manage AI"  
-  - OAuth buttons: Google, Apple, Microsoft (stacked, full-width, outlined)
-  - Divider: "or"
-  - Email input + Password input
-  - "Forgot your password?" link → modal
-  - "Sign in" button (blue, full-width)
-  - Toggle: "Don't have an account? Sign up"
-  - Footer: Terms + Privacy links
+---
 
-Font: Inter (or keep Geist since it's already configured — either is fine)
-Colors: Use the CSS variables from the existing globals.css. Primary blue = hsl(214 84% 56%)
+## SIDEBAR NAVIGATION (Current + Planned)
 
-### Auth Context Pattern (adapt for Next.js)
+```
+MAIN
+  Dashboard         → /dashboard
+  New Ticket        → /portal/new-ticket
+
+OPERATIONS
+  Tickets           → /dashboard/tickets
+  Templates         → /dashboard/templates
+  Delivery          → /dashboard/delivery       ← Dan owns this
+  Build Team        → /dashboard/build-team     ← Brian owns this
+  Deploy            → /dashboard/deploy
+  Analytics         → /dashboard/analytics
+
+CLIENTS                                          ← 🆕 NEW SECTION
+  Customers         → /dashboard/customers      ← WORKSTREAM A
+  Opportunities     → /dashboard/opportunities  ← PLANNED (Tony)
+
+DEPARTMENTS
+  CEO               → /dashboard/ceo            ← Dave
+  Sales             → /dashboard/sales          ← Tony
+  Marketing         → /dashboard/marketing      ← Robert
+  Product           → /dashboard/product        ← Chad
+  Engineering       → /dashboard/engineering    ← Brian + Jacob
+
+SYSTEM
+  Settings          → /settings
+```
+
+---
+
+## PARALLEL WORKSTREAMS — 6 CLAUDE CODE INSTANCES
+
+### How to Launch
+```bash
+# Each terminal — run separately:
+cd ~/manageai2026 && claude --dangerously-skip-permissions
+# Tell each: "Read CLAUDE.md, execute Workstream [X] only"
+```
+
+### File Ownership
+
+| Instance | Workstream | Owns | Coordinate On |
+|----------|-----------|------|---------------|
+| 1 | **A — Customers** | `dashboard/customers/`, `api/pipedrive/deals/[id]/`, `api/pipedrive/persons/[id]/`, `api/pipedrive/organizations/[id]/`, `lib/integrations/pipedrive.ts` | Sidebar.tsx (it owns this edit) |
+| 2 | **B — PDF + Approvals** | `api/analyze-ticket/route.ts`, `dashboard/tickets/[id]/page.tsx` | Nothing shared |
+| 3 | **C — Slack** | `lib/integrations/slack.ts` (new), `lib/agents/tools/communication.ts` | Nothing shared |
+| 4 | **D — Delivery Dashboard** | `dashboard/delivery/` only | Nothing shared |
+| 5 | **E — Engineering Dashboard** | `dashboard/engineering/` only | Nothing shared |
+| 6 | **F — Agent Write Actions** | `lib/agents/tools/platform-tickets.ts`, `lib/agents/tools/pipedrive-tools.ts`, `lib/agents/configs/index.ts` | Nothing shared |
+
+### Sidebar Rule
+**Only Workstream A touches Sidebar.tsx this session.** All others wait.
+
+### Commit Order
+Each workstream: `git add -A && git commit -m "workstream-X: description" && git push origin main` before the next session on overlapping files.
+
+---
+
+## WORKSTREAM A — CUSTOMERS & CLIENT MANAGEMENT
+
+**Owner:** Tony (daily user), Dan (delivery view)
+**Goal:** Complete client relationship hub. Every Pipedrive deal becomes a full client profile. Tony manages deals, Dan manages delivery, both see the full picture.
+
+### Part 1: Expand Pipedrive Client
+File: `lib/integrations/pipedrive.ts` — ADD these functions (do not remove existing):
+```
+getPerson(personId)              → GET /persons/{id}
+getPersonsByDeal(dealId)         → GET /deals/{id}/participants
+getOrganization(orgId)           → GET /organizations/{id}
+getOrgPersons(orgId)             → GET /organizations/{id}/persons
+getDealActivities(dealId)        → GET /activities?deal_id={id}
+getDealNotes(dealId)             → GET /notes?deal_id={id}
+getDealFiles(dealId)             → GET /files?deal_id={id}
+getDealFlow(dealId)              → GET /deals/{id}/flow
+getDealProducts(dealId)          → GET /deals/{id}/products
+getDealMailMessages(dealId)      → GET /deals/{id}/mailMessages
+```
+All must: use `https://api.pipedrive.com/v1`, include `?api_token=`, have try/catch, fall back to demo data if token missing.
+
+### Part 2: New API Routes
+- `api/pipedrive/deals/[id]/route.ts` — parallel fetch: deal + persons + activities + notes + files + flow + org + person
+- `api/pipedrive/persons/[id]/route.ts` — person + activities + deals
+- `api/pipedrive/organizations/[id]/route.ts` — org + persons + deals
+
+### Part 3: Customer List Page
+File: `dashboard/customers/page.tsx`
+- Table: Company | Contact | Value | Stage | Owner | Age | Last Activity
+- Search bar (filter by company/contact)
+- Stage filter dropdown
+- Click row → `/dashboard/customers/[dealId]`
+- Sort by value, age, last activity
+- Data from `/api/pipedrive/deals`
+
+### Part 4: Customer Detail Page
+File: `dashboard/customers/[id]/page.tsx`
+
+Layout:
+```
+Header: ← Back | Company Name | Agent Chat button
+Row 1: Deal Card (stage, value, owner, age) | Contact Card (name, email, phone)
+Row 2: Organization (industry, revenue, employees, custom fields)
+Tabs: Activity | Notes | Emails | Files | History | ManageAI Builds
+```
+
+Custom fields to display: Vertical, Lead List, Lead Stage, Seniority, State, AI Readiness Score, Software Tools, LLM Usage, Apollo/Clay Organization
+
+ManageAI Builds tab:
+- Query: `SELECT * FROM tickets WHERE company_name ILIKE '%{orgName}%' OR contact_email = '{email}'`
+- Show ticket status, platform, deliverables, deploy status
+- "Create New Ticket" button pre-filled with customer data from Pipedrive
+- Link each ticket to `/dashboard/tickets/[id]`
+
+Agent chat: include deal context in system message — "You are viewing the deal for [Company] (Deal #[id]) with contact [Person]. You have access to their full Pipedrive profile."
+
+### Part 5: Navigation
+- Add "Customers" to Sidebar under new CLIENTS section (Users icon, `/dashboard/customers`)
+- Add "View Profile →" link on each deal card in Sales dashboard
+
+### Verification
+```bash
+npm run build
+curl "http://localhost:3001/api/pipedrive/deals/[real-deal-id]"
+# All existing routes still 200
+```
+
+---
+
+## WORKSTREAM B — PDF EXTRACTION + TICKET APPROVALS
+
+**Owner:** Brian (build quality), Dan (delivery review)
+**Goal:** Fix the two highest-priority gaps from the audit.
+
+### Part 1: PDF Text Extraction
+File: `app/api/analyze-ticket/route.ts`
+
+```bash
+npm install pdf-parse @types/pdf-parse
+```
+
+In `extractFileText()`, add PDF branch:
 ```typescript
-// contexts/AuthContext.tsx
-'use client';
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase/client';
-
-interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  loading: boolean;
-  signInWithGoogle: () => Promise<{ error: Error | null }>;
-  signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUpWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
+if (mimeType === 'application/pdf') {
+  const pdfParse = (await import('pdf-parse')).default;
+  const result = await pdfParse(buffer);
+  return result.text;
 }
-
-// ... standard Supabase auth pattern with onAuthStateChange listener
 ```
 
-### Supabase Client (browser)
+Test: upload a real PDF SOW to a ticket, confirm text appears in AI analysis output.
+
+### Part 2: Ticket Approve/Reject UI
+File: `app/dashboard/tickets/[id]/page.tsx`
+
+When `ticket.status === 'REVIEW_PENDING'`, render:
+```
+[✓ Approve Build]  [↩ Request Revision]
+```
+- Approve → `POST /api/tickets/[id]/approve` with `{ action: 'approve' }`
+- Request Revision → show comment textarea → `POST` with `{ action: 'revision', comment }`
+- Optimistic UI update after response
+- Only visible when status is REVIEW_PENDING
+- Style: Approve = green, Revision = yellow, consistent with existing card styling
+
+---
+
+## WORKSTREAM C — SLACK INTEGRATION
+
+**Owner:** All agents (post to channels), Robert (marketing alerts)
+**Goal:** Replace mock with real Slack API so agents can actually post.
+
+### New File: `lib/integrations/slack.ts`
 ```typescript
-// lib/supabase/client.ts
-'use client';
-import { createClient } from '@supabase/supabase-js';
+const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
+const BASE = 'https://slack.com/api';
 
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+export async function sendMessage(channel: string, text: string, blocks?: any[])
+export async function createChannel(name: string)
+export async function listChannels()
+export async function uploadFile(channel: string, content: string, filename: string)
+export function isConfigured(): boolean
 ```
 
----
+All use `Authorization: Bearer ${SLACK_TOKEN}`. Fall back gracefully if token missing (match Pipedrive pattern — log `[DEMO MODE]`, return mock success).
 
-## TICKET WIZARD — EXACT FLOW
+### Update `lib/agents/tools/communication.ts`
+Replace mock `sendSlackMessage` body to call `sendMessage()` from the new Slack client.
 
-### Step 1: Company & Project Info
-```
-┌──────────────────────────────────────────┐
-│  New Build Request              Step 1/3 │
-│  ─────────────────────────────────────── │
-│  Company Name: [___________________]     │
-│  Contact Name: [___________________]     │
-│  Contact Email: [__________________]     │
-│  Project Name: [___________________]     │
-│                                          │
-│  Build Platform:                         │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐   │
-│  │  ⚙️ n8n  │ │ 🔧 Make │ │ ⚡ Zap  │   │
-│  │ (selected)│ │         │ │         │   │
-│  └─────────┘ └─────────┘ └─────────┘   │
-│                                          │
-│  What needs to be built:                 │
-│  [________________________________]      │
-│  [________________________________]      │
-│                                          │
-│  Expected outcome:                       │
-│  [________________________________]      │
-│                                          │
-│  Priority: [Medium ▾]                    │
-│                                 [Next →] │
-└──────────────────────────────────────────┘
-```
-
-### Step 2: Upload Context
-```
-┌──────────────────────────────────────────┐
-│  Upload Documents               Step 2/3 │
-│  ─────────────────────────────────────── │
-│  ┌──────────────────────────────────┐   │
-│  │  📁 Drag & drop files here       │   │
-│  │  PDF, DOCX, TXT, CSV, images     │   │
-│  │  ─────────────────────────────── │   │
-│  │  📄 opportunity_assessment.pdf    │   │
-│  │  📄 call_transcript.txt      ✕   │   │
-│  └──────────────────────────────────┘   │
-│                                          │
-│  📝 Paste transcript:                    │
-│  [________________________________]      │
-│                                          │
-│  🔗 Add link: [________________] [Add]   │
-│                                          │
-│  🗄️ Knowledge Vault  [Coming Soon]       │
-│                                          │
-│                        [← Back] [Next →] │
-└──────────────────────────────────────────┘
-```
-
-### Step 3: AI Review + Outputs
-```
-┌──────────────────────────────────────────┐
-│  AI Analysis                    Step 3/3 │
-│  ─────────────────────────────────────── │
-│                                          │
-│  ✅ "Thank you for the information."     │
-│  ┌──────────────────────────────────┐   │
-│  │ I understand you need a workflow  │   │
-│  │ that triggers when [X] and...     │   │
-│  └──────────────────────────────────┘   │
-│                                          │
-│  ❓ Questions:                            │
-│  1. What format does the data...?        │
-│     [________________________] ✓         │
-│  2. Is there an approval step...?        │
-│     [________________________]           │
-│                     [Submit Answers]      │
-│                                          │
-│  📦 Deliverables:                         │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐│
-│  │Build Plan│ │Solution  │ │Workflow  ││
-│  │  📄 View │ │Demo 🎬   │ │JSON ⚙️   ││
-│  └──────────┘ └──────────┘ └──────────┘│
-│                                          │
-│              [← Back] [Go to Dashboard]  │
-└──────────────────────────────────────────┘
-```
-
----
-
-## AI SYSTEM PROMPTS
-
-### Analysis Prompt (for /api/analyze-ticket)
-```
-You are an expert AI automation architect at ManageAI. You specialize in building 
-n8n, Make.com, and Zapier workflows for businesses.
-
-A client has submitted a build request. Analyze all provided information and:
-
-1. Provide a clear summary of what they need automated
-2. Show your understanding of the trigger, data flow, and systems involved
-3. Ask specific clarifying questions if anything is unclear (max 5-8 questions)
-4. Assess complexity and recommend the best platform
-
-Respond ONLY with valid JSON:
-{
-  "summary": "2-3 sentence overview",
-  "understanding": "Detailed paragraph of what you believe they need",
-  "questions": [
-    {"id": "q1", "question": "...", "category": "technical"},
-    {"id": "q2", "question": "...", "category": "business"}
-  ],
-  "ready_to_build": false,
-  "recommended_platform": "n8n",
-  "complexity_estimate": "moderate",
-  "risk_flags": ["needs OAuth setup for Gmail", "rate limiting on API"]
+### Channels to Support (hardcode as constants)
+```typescript
+export const CHANNELS = {
+  BUILDS: '#builds',        // Brian + Jacob
+  SALES: '#sales',          // Tony
+  ALERTS: '#alerts',        // Everyone
+  GENERAL: '#general',
+  LEADERSHIP: '#leadership' // Dave + Chad
 }
 ```
 
-### Build Plan Prompt (for /api/generate-build)
+---
+
+## WORKSTREAM D — DELIVERY DASHBOARD ENRICHMENT
+
+**Owner:** Dan
+**Goal:** Make `/dashboard/delivery` Dan's primary work surface for managing all active client projects.
+
+File: `app/dashboard/delivery/page.tsx` (read first — understand what's there)
+
+Add or enrich:
+- **Client Health Overview** — cards showing each active client: name, active builds, last activity, health indicator (green/yellow/red)
+- **Build Status by Client** — group tickets by company_name, show stage progress
+- **Deployment Health** — query `deployments` table, show success/failed/pending counts
+- **Upcoming Reviews** — placeholder cards for scheduled client reviews (manual entry for now)
+- **Overdue Builds** — tickets in BUILDING status > 5 days, flagged red
+- **Recently Deployed** — last 10 deployments with client name, platform, deploy date
+- Dan's Delivery Agent button must be present and wired to `agentConfigs.delivery` (check if it exists — if not, it's in scope to add to configs)
+
+---
+
+## WORKSTREAM E — ENGINEERING DASHBOARD ENRICHMENT
+
+**Owner:** Brian + Jacob
+**Goal:** Make `/dashboard/engineering` the build team's command center.
+
+File: `app/dashboard/engineering/page.tsx` (read first)
+
+Add or enrich:
+- **Build Queue** — tickets in SUBMITTED/ANALYZING/BUILDING status, sorted by priority, with age and platform badges
+- **Template Match Rate** — what % of recent tickets matched a template (query ticket_artifacts metadata)
+- **Artifact Quality** — recent build plan + solution demo previews with direct links
+- **Deploy Success Rate** — from deployments table: success vs failed last 30 days
+- **Platform Breakdown** — pie or bar chart: n8n vs Make.com vs Zapier ticket distribution
+- **Quick Actions** — "View Build Queue", "Trigger Rebuild", "Open Templates" buttons
+- Brian's Engineering Agent button must be present and wired
+
+---
+
+## WORKSTREAM F — AGENT WRITE ACTIONS
+
+**Owner:** Brian (agent framework)
+**Goal:** Give agents the ability to take real write actions, not just read.
+
+### `lib/agents/tools/platform-tickets.ts` — ADD:
+```typescript
+updateTicketStatus(ticketId, newStatus, comment?)
+// POST /api/tickets/[id]/status
+// Agents can move tickets: BUILDING→REVIEW_PENDING, APPROVED→DEPLOYED etc.
+
+assignTicket(ticketId, assigneeName)
+// Updates tickets.notes with assignment note + fires activity_event
+// Engineering/CEO agents can reassign work
+
+createTicketFromDeal(dealData)
+// Creates a new ticket pre-filled with Pipedrive deal data
+// Sales agent can trigger this when a deal closes
 ```
-You are a senior automation engineer writing a comprehensive build manual.
-Generate a COMPLETE, DETAILED build plan that anyone could follow to build 
-this system end-to-end. Include:
 
-- Executive Summary
-- System Architecture (describe the data flow)
-- Every scenario/workflow with step-by-step instructions
-- Required accounts, connections, and credentials
-- Module-by-module configuration
-- Testing plan with test cases
-- Deployment and monitoring instructions
-- Troubleshooting guide
+### `lib/agents/tools/pipedrive-tools.ts` — ADD:
+```typescript
+createDeal(title, value, personId?, stageId?)
+// POST /api/v1/deals — Sales agent creates deals
 
-Output as clean HTML with inline styles. Use a professional design:
-- Font: DM Sans or system sans-serif
-- Color scheme: blue (#4A8FD6) accent, dark text (#1A1A2E), light backgrounds (#F8F9FB)
-- Sections with clear headers
-- Code blocks for any JSON/config
-- Tables for structured data
-Make it look polished enough to send directly to a client.
+createPerson(name, email, phone?, orgId?)
+// POST /api/v1/persons — Sales agent adds contacts
+
+updateDealStage(dealId, stageId)
+// PATCH /api/v1/deals/{id} — move deal through pipeline
 ```
 
-### Solution Demo Prompt
-```
-Generate an interactive HTML solution demo as a SINGLE FILE React app.
-Use React 18 via CDN (react.production.min.js + react-dom.production.min.js).
-Include:
-- Tab navigation: Overview | The Challenge | How It Works | Live Demo | ROI | Technology | Next Steps
-- Overview: what the solution does
-- The Challenge: the business problem
-- How It Works: visual flow of the automation with animated steps
-- Live Demo: simulated data showing inputs → processing → outputs
-  - If the output is an email, show a simulated email
-  - If the output is a Slack message, show a simulated Slack interface
-  - If the output is a database update, show before/after
-- ROI: time saved, cost reduction, efficiency gains with animated counters
-- Technology: stack overview with account requirements
-- Next Steps: implementation timeline
+### `lib/agents/configs/index.ts` — Update tool lists:
+- Add `updateTicketStatus` and `assignTicket` to Engineering AI + CEO tools
+- Add `createDeal`, `createPerson`, `updateDealStage` to Sales AI tools
+- Add `createTicketFromDeal` to Sales AI tools
 
-Design: DM Sans font, #4A8FD6 blue accent, clean white backgrounds, 
-subtle animations (slideIn, fadeIn), professional and polished.
-All CSS must be inline or in a <style> tag. Single HTML file, no external dependencies except React CDN.
+---
+
+## PLANNED FEATURES — FUTURE WORKSTREAMS
+
+### Opportunity Assessment Generator
+**Who:** Tony uses in sales calls
+**What:** Tony pastes a call transcript or fills a form → Claude generates a full opportunity assessment doc with recommended automations, ROI estimates, implementation timeline → professional PDF → Tony sends to prospect
+```
+Route: /dashboard/opportunities/new
+API: /api/opportunity/assess
+Output: HTML doc + PDF download, saves to opportunity_assessments table
+```
+
+### AI Blueprint Generator
+**Who:** Tony closes deal → hands to Brian + Dan
+**What:** Opportunity assessment → full AI Blueprint document (strategy, architecture, 90-day roadmap, automation specs) → client-ready presentation
+```
+Route: /dashboard/opportunities/[id]/blueprint
+API: /api/blueprint/generate
+```
+
+### Deployed Automation Monitor
+**Who:** Dan (daily monitoring)
+**What:** Query deployed n8n/Make.com instances for automation health, run counts, error counts. Dan's agent alerts when something fails.
+```
+New table: client_automations
+API: /api/monitoring/check-all (cron job)
+Dashboard: /dashboard/delivery shows health per client
+```
+
+### Client Performance Reports
+**Who:** Dan generates, client receives
+**What:** Monthly auto-generated report per client: automations running, tasks processed, time saved, ROI estimate, recommendations
+```
+New table: client_reports
+API: /api/reports/generate
+Agent: Dan's Delivery Agent can trigger "generate monthly report for [client]"
+```
+
+### AI Teammate Management
+**Who:** Brian deploys, Dan manages
+**What:** Track which clients have Rebecka/Daniel/Sarah/Andrew deployed, their config, their usage
+```
+New table: teammate_deployments
+Dashboard: client detail page shows active teammates
+```
+
+### Client Portal
+**Who:** ManageAI clients (separate login)
+**What:** Clients see their deployed automations, request new builds, view performance reports, communicate with Dan
+```
+Route: /client-portal/[clientSlug]/
+Separate auth flow, read-only Supabase access
+```
+
+### Marketing Content Pipeline
+**Who:** Robert
+**What:** When a build is completed and deployed, Marketing Agent auto-drafts a case study, social posts, and adds to content calendar
+```
+Trigger: ticket status → CLOSED
+Agent: Marketing AI auto-drafts content
+Dashboard: /dashboard/marketing shows content calendar
 ```
 
 ---
 
-## SIDEBAR DESIGN
-
-```
-┌──────────────┐
-│ MANAGE AI    │  ← Logo
-│──────────────│
-│ 📊 Dashboard │  ← /dashboard
-│ ➕ New Ticket │  ← /portal/new-ticket
-│ 📋 Tickets   │  ← /dashboard/tickets
-│ ⚙️ Settings  │  ← /settings (placeholder)
-│              │
-│              │
-│              │
-│──────────────│
-│ 👤 Brian R.  │  ← User + sign out
-│ Sign out     │
-└──────────────┘
-```
-
-Width: 240px expanded, 64px collapsed. Dark sidebar (#1A1A2E) with white text.
-Active item: blue highlight background.
+## STYLING CONVENTIONS
+- Font: DM Sans (Google Fonts)
+- Primary accent: `#4A8FD6` blue
+- Component library: shadcn/ui + Tailwind CSS v4
+- Icons: lucide-react
+- Toasts: sonner
+- Charts: recharts
+- Sidebar: white, blue active state, collapsible to 64px icon-only
 
 ---
 
-## CRITICAL RULES
-1. Every page that needs auth must check — redirect to /login if not authenticated
-2. Use 'use client' directive on components that use hooks, state, or browser APIs
-3. Server components for layouts and data fetching where possible
-4. File uploads go to Supabase Storage bucket 'ticket-files'
-5. AI API calls MUST happen server-side (API routes) — never expose ANTHROPIC_API_KEY to client
-6. Show loading spinners during AI operations (they take 10-30 seconds)
-7. Use shadcn/ui components — do NOT install Material UI, Chakra, or other UI libraries
-8. All forms use controlled components with Zod validation
-9. Toast notifications via Sonner for success/error states
-10. Mobile responsive — sidebar collapses to hamburger on small screens
+## GIT WORKFLOW
+```bash
+cd ~/manageai2026
+git add -A
+git commit -m "workstream-X: description"
+git push origin main
+# Vercel auto-deploys → https://web-manage-ai1.vercel.app
+```
 
-## SKIP FOR TODAY (do NOT build these)
-- Multi-tenant / organization isolation
-- Knowledge vault integration
-- Make.com or Zapier output (n8n only for now)
-- Agent-to-agent handoffs
-- Realtime subscriptions
-- Email notifications
-- Support ticket path (only the intake wizard path)
-- n8n-MCP integration (generate reasonable JSON, wire MCP later)
+---
+
+## ABSOLUTE RULES FOR ALL INSTANCES
+
+1. `cd ~/manageai2026/apps/web` first — you are NEVER in `~/manageai` (V1) or `connect-hub`
+2. **Read before writing** — cat every file you plan to touch
+3. **`npm run build` before stopping** — zero TypeScript errors
+4. **Never touch** `app/api/agent/chat/route.ts` unless your workstream says so
+5. **Never touch** `app/api/analyze-ticket/route.ts` unless Workstream B
+6. **Never touch** n8n paths in `generate-build`
+7. **Sidebar.tsx = Workstream A only** this session
+8. **Never commit .env.local**
+9. **Demo/fallback mode** on all external integrations — check `isConfigured()` pattern in pipedrive.ts
+10. **Push when done** — don't leave uncommitted work
+11. **Match existing patterns** — read how existing features work before building new ones
+12. **The platform serves the ManageAI team** — every feature should make Dave, Chad, Brian, Dan, Tony, Robert, or Jacob's job faster and more powerful
