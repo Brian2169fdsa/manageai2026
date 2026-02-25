@@ -1,0 +1,11 @@
+{
+  "crons": [
+    { "path": "/api/scheduler?job=ceo-morning-brief",          "schedule": "0 7 * * 1-5" },
+    { "path": "/api/scheduler?job=sales-pipeline-review",      "schedule": "0 8 * * 1-5" },
+    { "path": "/api/scheduler?job=build-queue-check",          "schedule": "0 9 * * 1-5" },
+    { "path": "/api/scheduler?job=delivery-health-check",      "schedule": "0 9 * * 1-5" },
+    { "path": "/api/scheduler?job=weekly-ceo-report",          "schedule": "0 8 * * 1"   },
+    { "path": "/api/scheduler?job=monthly-client-reports",     "schedule": "0 9 1 * *"   },
+    { "path": "/api/scheduler?job=marketing-content-pipeline", "schedule": "0 10 * * 1"  }
+  ]
+}

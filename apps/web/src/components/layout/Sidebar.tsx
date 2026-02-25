@@ -22,6 +22,7 @@ import {
   LogOut,
   User,
   Users,
+  FileBarChart2,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
@@ -61,6 +62,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'CLIENTS',
     items: [
       { href: '/dashboard/customers', label: 'Customers', icon: Users },
+      { href: '/dashboard/opportunities', label: 'Opportunities', icon: FileBarChart2 },
     ],
   },
   {
@@ -76,6 +78,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'SYSTEM',
     items: [
+      { href: '/dashboard/settings/agents', label: 'Agent Jobs', icon: Bot },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },
