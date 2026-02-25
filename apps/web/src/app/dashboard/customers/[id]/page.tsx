@@ -119,7 +119,11 @@ export default function CustomerDetailPage() {
   const [ticketsLoading, setTicketsLoading] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setFetchError('Invalid deal ID — cannot load this page.');
+      setLoading(false);
+      return;
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -153,8 +157,14 @@ export default function CustomerDetailPage() {
 
   async function fetchTickets(orgName: string, email: string) {
     setTicketsLoading(true);
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 10000);
     try {
-      let query = supabase.from('tickets').select('*').order('created_at', { ascending: false });
+      let query = supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .abortSignal(ctl.signal);
       if (orgName) {
         query = query.ilike('company_name', `%${orgName}%`);
       } else if (email) {
@@ -165,6 +175,7 @@ export default function CustomerDetailPage() {
     } catch {
       // Tickets are non-critical — silently fail, show empty state
     } finally {
+      clearTimeout(t);
       setTicketsLoading(false);
     }
   }

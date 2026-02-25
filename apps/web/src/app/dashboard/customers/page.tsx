@@ -95,7 +95,11 @@ export default function CustomersPage() {
         if (!dealsRes.ok) throw new Error(`Deals API returned ${dealsRes.status}`);
 
         const dealsData = await dealsRes.json();
-        setDeals(dealsData.deals ?? []);
+        if (!dealsData || typeof dealsData !== 'object') {
+          throw new Error('Unexpected response from deals API — please try again.');
+        }
+        if (dealsData.error) throw new Error(dealsData.error);
+        setDeals(Array.isArray(dealsData.deals) ? dealsData.deals : []);
         setDemoMode(!!dealsData.demo_mode);
 
         if (pipelineRes.ok) {
