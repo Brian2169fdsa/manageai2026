@@ -1,8 +1,16 @@
+import { publishEvent } from '@/lib/events';
+
 export interface MakeConfig {
   apiToken: string;
   teamId: number;
   folderId?: number;
   region?: 'us1' | 'eu1' | 'eu2'; // defaults to 'us1'
+}
+
+/** Optional context for event publishing after a successful deploy */
+export interface DeployContext {
+  ticketId?: string;
+  clientName?: string;
 }
 
 export interface DeployResult {
@@ -21,7 +29,8 @@ const VALID_REGIONS = new Set(['us1', 'eu1', 'eu2']);
  */
 export async function deployToMake(
   blueprintJson: Record<string, unknown>,
-  config: MakeConfig
+  config: MakeConfig,
+  context?: DeployContext
 ): Promise<DeployResult> {
   if (!config.apiToken || !config.teamId) {
     return { success: false, error: 'Make.com not configured — provide apiToken and teamId' };
@@ -64,11 +73,28 @@ export async function deployToMake(
       return { success: false, error: 'Make.com returned no scenario ID' };
     }
 
-    return {
+    const result: DeployResult = {
       success: true,
       scenarioId,
       url: `${base}/scenarios/${scenarioId}`,
     };
+
+    // Publish deployment event (fire and forget)
+    publishEvent({
+      type: 'ticket.deployed',
+      payload: {
+        ticketId: context?.ticketId ?? null,
+        platform: 'make',
+        clientName: context?.clientName ?? 'Unknown Client',
+        deployUrl: result.url,
+        scenarioId,
+      },
+      fromAgent: 'Engineering AI',
+      toAgents: ['Delivery AI', 'Marketing AI'],
+      priority: 'normal',
+    }).catch((e: Error) => console.error('[make-deployer] publishEvent failed:', e.message));
+
+    return result;
   } catch (err) {
     return { success: false, error: (err as Error).message };
   }

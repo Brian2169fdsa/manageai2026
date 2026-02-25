@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, statusChangedHtml } from '@/lib/email/notifications';
+import { publishEvent } from '@/lib/events';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -99,6 +100,21 @@ export async function POST(
         created_at: new Date().toISOString(),
       })
     );
+
+    // Publish agent event on approval (best-effort — fire and forget)
+    if (action === 'approve') {
+      publishEvent({
+        type: 'ticket.approved',
+        payload: {
+          ticketId: ticketId,
+          clientName: ticket.company_name ?? ticket.contact_name ?? 'Unknown Client',
+          platform: ticket.ticket_type ?? 'unknown',
+        },
+        fromAgent: 'system',
+        toAgents: ['Engineering AI', 'Delivery AI'],
+        priority: 'normal',
+      }).catch((e: Error) => console.error('[approve] publishEvent failed:', e.message));
+    }
 
     // Send email notification (best-effort)
     if (ticket.contact_email) {

@@ -1,6 +1,14 @@
+import { publishEvent } from '@/lib/events';
+
 export interface N8nConfig {
   instanceUrl: string;
   apiKey: string;
+}
+
+/** Optional context for event publishing after a successful deploy */
+export interface DeployContext {
+  ticketId?: string;
+  clientName?: string;
 }
 
 export interface DeployResult {
@@ -17,7 +25,8 @@ export interface DeployResult {
  */
 export async function deployToN8n(
   workflowJson: Record<string, unknown>,
-  config: N8nConfig
+  config: N8nConfig,
+  context?: DeployContext
 ): Promise<DeployResult> {
   if (!config.instanceUrl || !config.apiKey) {
     return { success: false, error: 'n8n instance not configured — provide instanceUrl and apiKey' };
@@ -68,11 +77,28 @@ export async function deployToN8n(
       };
     }
 
-    return {
+    const result: DeployResult = {
       success: true,
       workflowId,
       url: `${base}/workflow/${workflowId}`,
     };
+
+    // Publish deployment event (fire and forget)
+    publishEvent({
+      type: 'ticket.deployed',
+      payload: {
+        ticketId: context?.ticketId ?? null,
+        platform: 'n8n',
+        clientName: context?.clientName ?? 'Unknown Client',
+        deployUrl: result.url,
+        workflowId,
+      },
+      fromAgent: 'Engineering AI',
+      toAgents: ['Delivery AI', 'Marketing AI'],
+      priority: 'normal',
+    }).catch((e: Error) => console.error('[n8n-deployer] publishEvent failed:', e.message));
+
+    return result;
   } catch (err) {
     return { success: false, error: (err as Error).message };
   }
