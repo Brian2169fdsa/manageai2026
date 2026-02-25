@@ -16,6 +16,9 @@ const getPipelineOverviewTool = pipedriveTools.find((t) => t.name === 'getPipeli
 const createDealTool = pipedriveTools.find((t) => t.name === 'createDeal')!;
 const createPersonTool = pipedriveTools.find((t) => t.name === 'createPerson')!;
 
+// Write-action tools (also included via ...platformTicketsTools spread, but referenced explicitly by some agent configs)
+const updateTicketStatusTool = platformTicketsTools.find((t) => t.name === 'updateTicketStatus')!;
+
 export const agentConfigs: Record<string, AgentConfig> = {
   ceo: {
     id: 'ceo',
