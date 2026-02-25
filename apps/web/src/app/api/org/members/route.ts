@@ -3,13 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 import { requireOrgMembership } from '@/lib/org/middleware';
 import { canManageMembers } from '@/lib/org/rbac';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 /** GET /api/org/members — list all members of the current user's org */
 export async function GET(req: NextRequest) {
+  const supabase = getSupabase();
   try {
     const membership = await requireOrgMembership(req.headers.get('authorization'));
 
@@ -30,6 +33,7 @@ export async function GET(req: NextRequest) {
 
 /** POST /api/org/members — invite a member (by email or user_id) */
 export async function POST(req: NextRequest) {
+  const supabase = getSupabase();
   try {
     const membership = await requireOrgMembership(req.headers.get('authorization'));
 

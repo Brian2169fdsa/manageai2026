@@ -5,10 +5,12 @@ import { canManageSettings } from '@/lib/org/rbac';
 import { testN8nConnection } from '@/lib/deploy/n8n-deployer';
 import { testMakeConnection } from '@/lib/deploy/make-deployer';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 interface DeployConfigs {
   n8n?: { instanceUrl?: string; apiKey?: string };
@@ -18,6 +20,7 @@ interface DeployConfigs {
 
 /** GET /api/deploy/config — returns current deploy configs (redacts API keys) */
 export async function GET(req: NextRequest) {
+  const supabase = getSupabase();
   try {
     const membership = await requireOrgMembership(req.headers.get('authorization'));
 
@@ -56,6 +59,7 @@ export async function GET(req: NextRequest) {
 
 /** POST /api/deploy/config — save deploy configs */
 export async function POST(req: NextRequest) {
+  const supabase = getSupabase();
   try {
     const membership = await requireOrgMembership(req.headers.get('authorization'));
 
@@ -112,6 +116,7 @@ export async function POST(req: NextRequest) {
 
 /** POST /api/deploy/config?action=test&platform=n8n|make — test connection */
 export async function PUT(req: NextRequest) {
+  const supabase = getSupabase();
   try {
     const membership = await requireOrgMembership(req.headers.get('authorization'));
     const { searchParams } = new URL(req.url);

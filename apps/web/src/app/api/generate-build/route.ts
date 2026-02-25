@@ -15,13 +15,16 @@ export const maxDuration = 300;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 /** Upload a string as a file to Supabase Storage using Buffer (server-safe) */
 async function uploadToStorage(path: string, content: string, contentType: string): Promise<void> {
+  const supabase = getSupabase();
   console.log(`[generate-build] Uploading ${path} (${content.length} chars, ${contentType})...`);
   const buffer = Buffer.from(content, 'utf-8');
   const { error } = await supabase.storage
@@ -118,6 +121,7 @@ async function getN8nNodeContext(description: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = getSupabase();
   console.log('\n========== [generate-build] POST called ==========');
 
   let body: Record<string, unknown>;

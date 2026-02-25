@@ -1,9 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 export interface OrgMembership {
   org_id: string;
@@ -16,6 +18,7 @@ export interface OrgMembership {
  * Returns null if the user has no org membership.
  */
 export async function getOrgForUser(userId: string): Promise<OrgMembership | null> {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('org_members')
     .select('org_id, role, department')
@@ -46,6 +49,7 @@ export async function requireOrgMembership(
   }
 
   const token = authHeader.replace('Bearer ', '');
+  const supabase = getSupabase();
 
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
   if (userError || !userData.user) {

@@ -3,10 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 import { requireOrgMembership } from '@/lib/org/middleware';
 import { canManageMembers } from '@/lib/org/rbac';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Lazy-initialised so the module can be imported at build time without env vars
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 /** PATCH /api/org/members/[id] — update a member's role or department */
 export async function PATCH(
@@ -14,6 +17,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = getSupabase();
     const membership = await requireOrgMembership(req.headers.get('authorization'));
     const { id: memberId } = await params;
 
@@ -79,6 +83,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = getSupabase();
     const membership = await requireOrgMembership(req.headers.get('authorization'));
     const { id: memberId } = await params;
 

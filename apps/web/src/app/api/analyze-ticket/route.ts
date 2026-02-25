@@ -9,10 +9,12 @@ export const maxDuration = 300;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 /** Robustly extract JSON from Claude's response, which may include markdown fences */
 function extractJson(raw: string): Record<string, unknown> {
@@ -47,6 +49,7 @@ async function extractFileText(filePath: string, mimeType?: string | null): Prom
 
   if (!isPdf && !isLikelyText) return null;
 
+  const supabase = getSupabase();
   try {
     const { data, error } = await supabase.storage.from('ticket-files').download(filePath);
     if (error || !data) return null;
@@ -70,6 +73,7 @@ async function extractFileText(filePath: string, mimeType?: string | null): Prom
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = getSupabase();
   console.log('\n========== [analyze-ticket] POST called ==========');
   console.log('[analyze-ticket] ANTHROPIC_API_KEY exists:', !!process.env.ANTHROPIC_API_KEY);
   console.log('[analyze-ticket] NEXT_PUBLIC_SUPABASE_URL exists:', !!process.env.NEXT_PUBLIC_SUPABASE_URL);
