@@ -7,10 +7,13 @@ import { sendEmail, deploymentCompleteHtml } from '@/lib/email/notifications';
 
 export const maxDuration = 60;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Lazy-initialised so the module can be imported at build time without env vars
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 /**
  * POST /api/deploy
@@ -20,6 +23,7 @@ const supabase = createClient(
  * creates a deployments row, updates ticket status, sends email.
  */
 export async function POST(req: NextRequest) {
+  const supabase = getSupabase();
   try {
     const body = await req.json();
     const { ticket_id } = body as { ticket_id: string };

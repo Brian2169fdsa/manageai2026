@@ -97,3 +97,40 @@ export interface WizardStep2Data {
   transcript: string;
   links: string[];
 }
+
+// ── Opportunity Assessments ──────────────────────────────────────────────────
+
+export interface AssessmentMetrics {
+  hours_saved_per_week: number;
+  annual_cost_savings: number;
+  implementation_cost_low: number;
+  implementation_cost_high: number;
+  payback_months: number;
+  three_year_roi: number;
+  opportunities_count: number;
+}
+
+export interface OpportunityAssessmentFormData {
+  company_name: string;
+  contact_name: string;
+  industry: string;
+  company_size: string;
+  website?: string;
+  pain_points: string[];
+  current_tools: string[];
+  annual_revenue: string;
+  primary_goal: string;
+}
+
+export interface OpportunityAssessment {
+  id: string;
+  pipedrive_deal_id?: number | null;
+  company_name: string;
+  contact_name: string;
+  form_data: OpportunityAssessmentFormData;
+  transcript?: string | null;
+  assessment: { metrics?: AssessmentMetrics };
+  html_content?: string | null;
+  status: 'draft' | 'sent' | 'converted';
+  created_at: string;
+}

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendEmail } from '@/lib/email/notifications';
 
 /** POST /api/send-email — send a transactional email */
 export async function POST(req: NextRequest) {
@@ -16,6 +15,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'to, subject, and html are required' }, { status: 400 });
     }
 
+    // Dynamic import prevents module-level Supabase client creation at build time
+    const { sendEmail } = await import('@/lib/email/notifications');
     const result = await sendEmail({ to, subject, html, ticket_id });
 
     if (!result.success) {
