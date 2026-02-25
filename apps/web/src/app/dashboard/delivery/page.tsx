@@ -4,24 +4,44 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Search,
-  Package,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  BarChart3,
-  Calendar,
-  Building2,
-  ChevronRight,
-  Share2,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+} from 'recharts';
+import {
+  Search, Package, Clock, CheckCircle2, AlertCircle, BarChart3,
+  Calendar, Building2, ChevronRight, Share2, AlertTriangle, Activity,
+  Rocket, ExternalLink, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Ticket } from '@/types';
+import { AgentButton } from '@/components/agents/AgentButton';
+import { agentConfigs } from '@/lib/agents/configs';
 
-// Progress through the status pipeline (0-100)
+// ── Types ─────────────────────────────────────────────────────────────────────
+type HealthScore = 'healthy' | 'on_track' | 'at_risk' | 'overdue';
+
+interface TicketWithMeta extends Ticket {
+  artifact_count?: number;
+  health: HealthScore;
+  days_in_status: number;
+}
+
+interface DeploymentRecord {
+  id: string;
+  ticket_id: string;
+  platform: string;
+  status: string;
+  external_url?: string;
+  created_at: string;
+  // joined
+  company_name?: string;
+  project_name?: string;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 const STATUS_PROGRESS: Record<string, number> = {
   SUBMITTED: 10,
   CONTEXT_PENDING: 20,
@@ -52,44 +72,110 @@ const PLATFORM_CONFIG: Record<string, { label: string; class: string }> = {
   zapier: { label: 'Zapier', class: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
 };
 
-interface TicketWithCount extends Ticket {
-  artifact_count?: number;
+const HEALTH_CONFIG: Record<HealthScore, { label: string; dot: string; badge: string; bar: string }> = {
+  healthy:  { label: 'Healthy',  dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700', bar: '#10b981' },
+  on_track: { label: 'On Track', dot: 'bg-blue-500',    badge: 'bg-blue-100 text-blue-700',       bar: '#60a5fa' },
+  at_risk:  { label: 'At Risk',  dot: 'bg-amber-500',   badge: 'bg-amber-100 text-amber-800',     bar: '#f59e0b' },
+  overdue:  { label: 'Overdue',  dot: 'bg-red-500',     badge: 'bg-red-100 text-red-700',         bar: '#ef4444' },
+};
+
+const PIPELINE_STAGES = [
+  { key: 'Intake',    statuses: ['SUBMITTED', 'CONTEXT_PENDING'],           color: '#94a3b8' },
+  { key: 'Analysis',  statuses: ['ANALYZING', 'QUESTIONS_PENDING'],          color: '#60a5fa' },
+  { key: 'Building',  statuses: ['BUILDING'],                                color: '#f59e0b' },
+  { key: 'Review',    statuses: ['REVIEW_PENDING'],                          color: '#a78bfa' },
+  { key: 'Delivered', statuses: ['APPROVED', 'DEPLOYED', 'CLOSED'],          color: '#10b981' },
+];
+
+const DEPLOY_STATUS_CONFIG: Record<string, { label: string; class: string; icon: React.ReactNode }> = {
+  deployed:               { label: 'Deployed',       class: 'bg-green-100 text-green-700',   icon: <CheckCircle2 size={12} /> },
+  failed:                 { label: 'Failed',          class: 'bg-red-100 text-red-700',       icon: <XCircle size={12} /> },
+  manual_guide_generated: { label: 'Guide Ready',     class: 'bg-blue-100 text-blue-700',     icon: <Rocket size={12} /> },
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function getDaysInStatus(t: Ticket): number {
+  return Math.floor((Date.now() - new Date(t.updated_at).getTime()) / 86400000);
 }
 
+function getHealth(t: Ticket): HealthScore {
+  if (['DEPLOYED', 'CLOSED', 'APPROVED'].includes(t.status)) return 'healthy';
+  const days = getDaysInStatus(t);
+  if (days >= 7) return 'overdue';
+  if (days >= 3) return 'at_risk';
+  return 'on_track';
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function DeliveryPage() {
   const router = useRouter();
-  const [tickets, setTickets] = useState<TicketWithCount[]>([]);
+  const [tickets, setTickets] = useState<TicketWithMeta[]>([]);
+  const [deployments, setDeployments] = useState<DeploymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deploymentsLoading, setDeploymentsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [platformFilter, setPlatformFilter] = useState('all');
+  const [healthFilter, setHealthFilter] = useState('all');
 
   useEffect(() => {
-    async function load() {
+    async function loadTickets() {
       const { data } = await supabase
         .from('tickets')
         .select('*')
         .order('updated_at', { ascending: false });
 
       if (data) {
-        // Fetch artifact counts for all tickets in parallel
-        const ticketsWithCounts = await Promise.all(
+        const ticketsWithMeta = await Promise.all(
           data.map(async (t) => {
             const { count } = await supabase
               .from('ticket_artifacts')
               .select('id', { count: 'exact', head: true })
               .eq('ticket_id', t.id);
-            return { ...t, artifact_count: count ?? 0 };
+            return {
+              ...t,
+              artifact_count: count ?? 0,
+              health: getHealth(t as Ticket),
+              days_in_status: getDaysInStatus(t as Ticket),
+            } as TicketWithMeta;
           })
         );
-        setTickets(ticketsWithCounts as TicketWithCount[]);
+        setTickets(ticketsWithMeta);
       }
       setLoading(false);
     }
-    load();
+
+    async function loadDeployments() {
+      const { data } = await supabase
+        .from('deployments')
+        .select('id, ticket_id, platform, status, external_url, created_at')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (data && data.length > 0) {
+        // Join with tickets to get company/project names
+        const ticketIds = [...new Set(data.map((d) => d.ticket_id))];
+        const { data: ticketData } = await supabase
+          .from('tickets')
+          .select('id, company_name, project_name')
+          .in('id', ticketIds);
+
+        const ticketMap = new Map((ticketData ?? []).map((t) => [t.id, t]));
+        const enriched = data.map((d) => ({
+          ...d,
+          company_name: ticketMap.get(d.ticket_id)?.company_name ?? 'Unknown',
+          project_name: ticketMap.get(d.ticket_id)?.project_name ?? 'Untitled',
+        }));
+        setDeployments(enriched);
+      }
+      setDeploymentsLoading(false);
+    }
+
+    loadTickets();
+    loadDeployments();
   }, []);
 
-  // ── Summary counts ───────────────────────────────────────────────────────
+  // ── Derived data ──────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const total = tickets.length;
     const inProgress = tickets.filter((t) =>
@@ -97,10 +183,35 @@ export default function DeliveryPage() {
     ).length;
     const awaitingReview = tickets.filter((t) => t.status === 'REVIEW_PENDING').length;
     const delivered = tickets.filter((t) => ['APPROVED', 'DEPLOYED', 'CLOSED'].includes(t.status)).length;
-    return { total, inProgress, awaitingReview, delivered };
+    const atRisk = tickets.filter((t) => t.health === 'at_risk' || t.health === 'overdue').length;
+    return { total, inProgress, awaitingReview, delivered, atRisk };
   }, [tickets]);
 
-  // ── Filtered list ────────────────────────────────────────────────────────
+  const pipelineData = useMemo(() =>
+    PIPELINE_STAGES.map(({ key, statuses, color }) => ({
+      stage: key,
+      count: tickets.filter((t) => statuses.includes(t.status)).length,
+      color,
+    })),
+    [tickets]
+  );
+
+  const needsAttention = useMemo(() =>
+    tickets
+      .filter((t) => t.health === 'at_risk' || t.health === 'overdue')
+      .sort((a, b) => b.days_in_status - a.days_in_status)
+      .slice(0, 5),
+    [tickets]
+  );
+
+  // Tickets stuck in BUILDING > 5 days
+  const overdueBuilds = useMemo(() =>
+    tickets
+      .filter((t) => t.status === 'BUILDING' && t.days_in_status > 5)
+      .sort((a, b) => b.days_in_status - a.days_in_status),
+    [tickets]
+  );
+
   const filtered = useMemo(() => {
     return tickets.filter((t) => {
       const matchesSearch =
@@ -116,9 +227,10 @@ export default function DeliveryPage() {
         (statusFilter === 'delivered' && ['APPROVED', 'DEPLOYED', 'CLOSED'].includes(t.status)) ||
         t.status === statusFilter;
       const matchesPlatform = platformFilter === 'all' || t.ticket_type === platformFilter;
-      return matchesSearch && matchesStatus && matchesPlatform;
+      const matchesHealth = healthFilter === 'all' || t.health === healthFilter;
+      return matchesSearch && matchesStatus && matchesPlatform && matchesHealth;
     });
-  }, [tickets, search, statusFilter, platformFilter]);
+  }, [tickets, search, statusFilter, platformFilter, healthFilter]);
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -126,15 +238,15 @@ export default function DeliveryPage() {
       <div>
         <h1 className="text-2xl font-bold">Delivery Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          All customer projects and their delivery status
+          Client health command center — all active and delivered projects
         </p>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <SummaryCard
           icon={<BarChart3 size={18} className="text-slate-500" />}
-          label="Total Projects"
+          label="Total"
           value={stats.total}
           loading={loading}
           bg="bg-slate-50"
@@ -148,23 +260,263 @@ export default function DeliveryPage() {
         />
         <SummaryCard
           icon={<AlertCircle size={18} className="text-purple-500" />}
-          label="Awaiting Review"
+          label="In Review"
           value={stats.awaitingReview}
           loading={loading}
           bg="bg-purple-50"
         />
         <SummaryCard
-          icon={<CheckCircle2 size={18} className="text-green-500" />}
+          icon={<CheckCircle2 size={18} className="text-emerald-500" />}
           label="Delivered"
           value={stats.delivered}
           loading={loading}
-          bg="bg-green-50"
+          bg="bg-emerald-50"
+        />
+        <SummaryCard
+          icon={<AlertTriangle size={18} className="text-amber-500" />}
+          label="At Risk"
+          value={stats.atRisk}
+          loading={loading}
+          bg={stats.atRisk > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50'}
         />
       </div>
 
+      {/* Pipeline chart + Needs Attention */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Pipeline overview */}
+        <Card>
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <Activity size={13} />
+              Pipeline Overview
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="h-36 bg-muted animate-pulse rounded-lg" />
+            ) : (
+              <ResponsiveContainer width="100%" height={150}>
+                <BarChart data={pipelineData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip formatter={(v) => [v, 'Projects']} />
+                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                    {pipelineData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Needs Attention */}
+        <Card className={cn(needsAttention.length > 0 ? 'border-amber-200 bg-amber-50/30' : '')}>
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wide flex items-center gap-2">
+              <AlertTriangle
+                size={13}
+                className={needsAttention.length > 0 ? 'text-amber-600' : 'text-muted-foreground'}
+              />
+              <span className={needsAttention.length > 0 ? 'text-amber-800' : 'text-muted-foreground'}>
+                Needs Attention
+              </span>
+              {needsAttention.length > 0 && (
+                <span className="ml-auto text-xs font-medium bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
+                  {needsAttention.length}
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-10 bg-muted animate-pulse rounded" />
+                ))}
+              </div>
+            ) : needsAttention.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                <CheckCircle2 size={28} className="mb-2 text-emerald-300" />
+                <p className="text-sm font-medium">All projects on track</p>
+                <p className="text-xs mt-0.5">No projects need immediate attention</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {needsAttention.map((t) => {
+                  const health = HEALTH_CONFIG[t.health];
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => router.push(`/dashboard/delivery/${t.id}`)}
+                      className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border bg-white hover:border-amber-300 hover:shadow-sm transition-all"
+                    >
+                      <span className={cn('w-2 h-2 rounded-full shrink-0', health.dot)} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold truncate">
+                          {t.project_name || 'Untitled'}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">{t.company_name}</div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', health.badge)}>
+                          {health.label}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          {t.days_in_status}d in {STATUS_CONFIG[t.status]?.label ?? t.status}
+                        </div>
+                      </div>
+                      <ChevronRight size={12} className="text-muted-foreground shrink-0" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Overdue Builds alert — only shown when there are overdue builds */}
+      {!loading && overdueBuilds.length > 0 && (
+        <Card className="border-red-200 bg-red-50/30">
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="text-xs font-semibold text-red-700 uppercase tracking-wide flex items-center gap-2">
+              <AlertTriangle size={13} className="text-red-600" />
+              Overdue Builds
+              <span className="ml-auto text-xs font-medium bg-red-200 text-red-800 px-2 py-0.5 rounded-full">
+                {overdueBuilds.length} stuck
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-0 pb-0">
+            <div className="divide-y divide-red-100">
+              {overdueBuilds.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-3 px-5 py-3"
+                >
+                  <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium truncate">
+                        {t.project_name || 'Untitled'}
+                      </span>
+                      <span className={cn(
+                        'text-[10px] px-2 py-0.5 rounded-full font-semibold border shrink-0',
+                        PLATFORM_CONFIG[t.ticket_type]?.class ?? 'bg-gray-100 text-gray-600'
+                      )}>
+                        {PLATFORM_CONFIG[t.ticket_type]?.label ?? t.ticket_type}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{t.company_name}</div>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-2">
+                    <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-0.5 rounded">
+                      {t.days_in_status}d in building
+                    </span>
+                    <button
+                      onClick={() => router.push(`/dashboard/delivery/${t.id}`)}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      View →
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recently Deployed */}
+      <Card>
+        <CardHeader className="pb-2 pt-4">
+          <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+            <Rocket size={13} />
+            Recently Deployed
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-0 pb-0">
+          {deploymentsLoading ? (
+            <div className="px-5 pb-4 space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-10 bg-muted animate-pulse rounded" />
+              ))}
+            </div>
+          ) : deployments.length === 0 ? (
+            <div className="px-5 py-8 text-center">
+              <Rocket size={28} className="mx-auto text-muted-foreground opacity-20 mb-2" />
+              <p className="text-sm text-muted-foreground">No deployments yet</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Deployments will appear here once builds are approved and deployed
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {deployments.map((d) => {
+                const depCfg = DEPLOY_STATUS_CONFIG[d.status] ?? {
+                  label: d.status,
+                  class: 'bg-gray-100 text-gray-600',
+                  icon: <Rocket size={12} />,
+                };
+                const platformCfg = PLATFORM_CONFIG[d.platform] ?? {
+                  label: d.platform,
+                  class: 'bg-gray-100 text-gray-600 border-gray-200',
+                };
+                return (
+                  <div key={d.id} className="flex items-center gap-3 px-5 py-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium truncate">
+                          {d.project_name}
+                        </span>
+                        <span className={cn(
+                          'text-[10px] px-2 py-0.5 rounded-full font-semibold border shrink-0',
+                          platformCfg.class
+                        )}>
+                          {platformCfg.label}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{d.company_name}</div>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-2">
+                      <span className={cn(
+                        'text-[10px] px-2 py-0.5 rounded font-medium flex items-center gap-1',
+                        depCfg.class
+                      )}>
+                        {depCfg.icon}
+                        {depCfg.label}
+                      </span>
+                      <span className="text-xs text-muted-foreground hidden sm:block">
+                        {new Date(d.created_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
+                      {d.external_url && (
+                        <a
+                          href={d.external_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open in platform"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink size={12} className="text-muted-foreground hover:text-blue-600 transition-colors" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
-        {/* Search */}
         <div className="relative flex-1 min-w-48">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -175,7 +527,6 @@ export default function DeliveryPage() {
           />
         </div>
 
-        {/* Status filter */}
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-44 h-9">
             <SelectValue placeholder="All Statuses" />
@@ -188,7 +539,6 @@ export default function DeliveryPage() {
           </SelectContent>
         </Select>
 
-        {/* Platform filter */}
         <Select value={platformFilter} onValueChange={setPlatformFilter}>
           <SelectTrigger className="w-36 h-9">
             <SelectValue placeholder="All Platforms" />
@@ -198,6 +548,19 @@ export default function DeliveryPage() {
             <SelectItem value="n8n">n8n</SelectItem>
             <SelectItem value="make">Make.com</SelectItem>
             <SelectItem value="zapier">Zapier</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={healthFilter} onValueChange={setHealthFilter}>
+          <SelectTrigger className="w-36 h-9">
+            <SelectValue placeholder="All Health" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Health</SelectItem>
+            <SelectItem value="on_track">On Track</SelectItem>
+            <SelectItem value="at_risk">At Risk</SelectItem>
+            <SelectItem value="overdue">Overdue</SelectItem>
+            <SelectItem value="healthy">Healthy</SelectItem>
           </SelectContent>
         </Select>
 
@@ -217,12 +580,13 @@ export default function DeliveryPage() {
         <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
           <Package size={40} className="mb-3 opacity-30" />
           <p className="font-medium text-sm">No projects found</p>
-          {(search || statusFilter !== 'all' || platformFilter !== 'all') && (
+          {(search || statusFilter !== 'all' || platformFilter !== 'all' || healthFilter !== 'all') && (
             <button
               onClick={() => {
                 setSearch('');
                 setStatusFilter('all');
                 setPlatformFilter('all');
+                setHealthFilter('all');
               }}
               className="text-blue-600 text-sm mt-2 hover:underline"
             >
@@ -241,11 +605,14 @@ export default function DeliveryPage() {
           ))}
         </div>
       )}
+
+      {/* Delivery Agent */}
+      <AgentButton config={agentConfigs.delivery} />
     </div>
   );
 }
 
-// ── Summary card ─────────────────────────────────────────────────────────────
+// ── Summary card ──────────────────────────────────────────────────────────────
 function SummaryCard({
   icon,
   label,
@@ -274,8 +641,8 @@ function SummaryCard({
   );
 }
 
-// ── Project card ─────────────────────────────────────────────────────────────
-function ProjectCard({ ticket, onClick }: { ticket: TicketWithCount; onClick: () => void }) {
+// ── Project card ──────────────────────────────────────────────────────────────
+function ProjectCard({ ticket, onClick }: { ticket: TicketWithMeta; onClick: () => void }) {
   function copyShareLink(e: React.MouseEvent) {
     e.stopPropagation();
     const url = `${window.location.origin}/share/${ticket.id}/demo`;
@@ -285,9 +652,18 @@ function ProjectCard({ ticket, onClick }: { ticket: TicketWithCount; onClick: ()
       toast.error('Could not copy link');
     });
   }
-  const status = STATUS_CONFIG[ticket.status] ?? { label: ticket.status, variant: 'bg-gray-100 text-gray-700', dot: 'bg-gray-400' };
-  const platform = PLATFORM_CONFIG[ticket.ticket_type] ?? { label: ticket.ticket_type, class: 'bg-gray-100 text-gray-600' };
+
+  const status = STATUS_CONFIG[ticket.status] ?? {
+    label: ticket.status,
+    variant: 'bg-gray-100 text-gray-700',
+    dot: 'bg-gray-400',
+  };
+  const platform = PLATFORM_CONFIG[ticket.ticket_type] ?? {
+    label: ticket.ticket_type,
+    class: 'bg-gray-100 text-gray-600 border-gray-200',
+  };
   const progress = STATUS_PROGRESS[ticket.status] ?? 0;
+  const health = HEALTH_CONFIG[ticket.health];
 
   return (
     <button
@@ -358,9 +734,15 @@ function ProjectCard({ ticket, onClick }: { ticket: TicketWithCount; onClick: ()
           <Calendar size={11} />
           {new Date(ticket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
         </span>
-        {ticket.complexity_estimate && (
-          <span className="capitalize">{ticket.complexity_estimate}</span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {ticket.complexity_estimate && (
+            <span className="capitalize">{ticket.complexity_estimate}</span>
+          )}
+          <span className={cn('flex items-center gap-0.5 px-1.5 py-0.5 rounded font-medium text-[10px]', health.badge)}>
+            <span className={cn('w-1.5 h-1.5 rounded-full', health.dot)} />
+            {health.label}
+          </span>
+        </div>
       </div>
     </button>
   );

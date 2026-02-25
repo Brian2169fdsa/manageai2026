@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { Ticket, TicketArtifact, TicketAsset, AIQuestion } from '@/types';
+import {
+  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip,
+} from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -115,6 +118,52 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   BUILDING: ['REVIEW_PENDING'],
   QUESTIONS_PENDING: ['BUILDING'],
 };
+
+// ── Client health helpers ─────────────────────────────────────────────────────
+type HealthScore = 'healthy' | 'on_track' | 'at_risk' | 'overdue';
+
+const HEALTH_STYLE: Record<HealthScore, { label: string; dot: string; badge: string; cardBg: string }> = {
+  healthy:  {
+    label: 'Healthy',
+    dot: 'bg-emerald-500',
+    badge: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+    cardBg: 'bg-emerald-50/40 border-emerald-200',
+  },
+  on_track: {
+    label: 'On Track',
+    dot: 'bg-blue-500',
+    badge: 'bg-blue-100 text-blue-700 border border-blue-200',
+    cardBg: 'bg-blue-50/40 border-blue-200',
+  },
+  at_risk: {
+    label: 'At Risk',
+    dot: 'bg-amber-500',
+    badge: 'bg-amber-100 text-amber-800 border border-amber-200',
+    cardBg: 'bg-amber-50/40 border-amber-200',
+  },
+  overdue: {
+    label: 'Overdue',
+    dot: 'bg-red-500',
+    badge: 'bg-red-100 text-red-700 border border-red-200',
+    cardBg: 'bg-red-50/40 border-red-200',
+  },
+};
+
+function calcDaysInStatus(t: Ticket): number {
+  return Math.floor((Date.now() - new Date(t.updated_at).getTime()) / 86400000);
+}
+
+function calcDaysOpen(t: Ticket): number {
+  return Math.floor((Date.now() - new Date(t.created_at).getTime()) / 86400000);
+}
+
+function calcHealth(t: Ticket): HealthScore {
+  if (['DEPLOYED', 'CLOSED', 'APPROVED'].includes(t.status)) return 'healthy';
+  const days = calcDaysInStatus(t);
+  if (days >= 7) return 'overdue';
+  if (days >= 3) return 'at_risk';
+  return 'on_track';
+}
 
 export default function DeliveryDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -334,6 +383,9 @@ export default function DeliveryDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Client Health Summary */}
+      <ClientHealthCard ticket={ticket} artifacts={artifacts} />
 
       {/* Customer info */}
       <Card>
@@ -692,6 +744,141 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
         <span>{label}</span>
       </div>
       <div className="text-sm font-medium">{value}</div>
+    </div>
+  );
+}
+
+// ── Client Health Card ────────────────────────────────────────────────────────
+const ARTIFACT_CHART_COLORS: Record<string, string> = {
+  build_plan:    '#60a5fa',
+  solution_demo: '#a78bfa',
+  workflow_json: '#10b981',
+};
+
+function ClientHealthCard({
+  ticket,
+  artifacts,
+}: {
+  ticket: Ticket;
+  artifacts: TicketArtifact[];
+}) {
+  const health = calcHealth(ticket);
+  const daysOpen = calcDaysOpen(ticket);
+  const daysInStatus = calcDaysInStatus(ticket);
+  const style = HEALTH_STYLE[health];
+
+  const artifactTypes = ['build_plan', 'solution_demo', 'workflow_json'] as const;
+  const artifactLabels: Record<string, string> = {
+    build_plan: 'Build Plan',
+    solution_demo: 'Solution Demo',
+    workflow_json: 'Workflow JSON',
+  };
+  const artifactChartData = artifactTypes.map((type) => ({
+    name: artifactLabels[type],
+    ready: artifacts.some((a) => a.artifact_type === type) ? 1 : 0,
+    color: ARTIFACT_CHART_COLORS[type],
+  }));
+  const readyCount = artifactChartData.filter((d) => d.ready === 1).length;
+
+  return (
+    <Card className={cn('border', style.cardBg)}>
+      <CardContent className="pt-4 pb-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          {/* Left: health badge + label */}
+          <div className="flex items-center gap-3">
+            <div className={cn('w-3 h-3 rounded-full shrink-0', style.dot)} />
+            <div>
+              <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-0.5">
+                Client Health
+              </div>
+              <span className={cn('text-sm font-semibold px-2 py-0.5 rounded-full', style.badge)}>
+                {style.label}
+              </span>
+            </div>
+          </div>
+
+          {/* Middle: metrics */}
+          <div className="flex items-center gap-6">
+            <HealthMetric label="Days Open" value={daysOpen} warn={daysOpen > 14} />
+            <HealthMetric
+              label="Days in Status"
+              value={daysInStatus}
+              warn={daysInStatus >= 3}
+              danger={daysInStatus >= 7}
+            />
+            <HealthMetric
+              label="Deliverables"
+              value={`${readyCount}/3`}
+              warn={false}
+            />
+          </div>
+
+          {/* Right: artifact readiness chart */}
+          <div className="flex flex-col items-end gap-1">
+            <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
+              Artifact Readiness
+            </div>
+            <ResponsiveContainer width={120} height={36}>
+              <BarChart
+                data={artifactChartData}
+                margin={{ top: 2, right: 0, left: 0, bottom: 0 }}
+                barSize={24}
+              >
+                <XAxis dataKey="name" hide />
+                <YAxis domain={[0, 1]} hide />
+                <Tooltip
+                  formatter={(v, name) => [v === 1 ? 'Ready' : 'Pending', name]}
+                  contentStyle={{ fontSize: 11 }}
+                />
+                <Bar dataKey="ready" radius={[3, 3, 0, 0]}>
+                  {artifactChartData.map((entry, i) => (
+                    <Cell
+                      key={i}
+                      fill={entry.ready === 1 ? entry.color : '#e2e8f0'}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="flex gap-1.5">
+              {artifactChartData.map((d) => (
+                <div
+                  key={d.name}
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: d.ready === 1 ? d.color : '#e2e8f0' }}
+                  title={`${d.name}: ${d.ready === 1 ? 'Ready' : 'Pending'}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function HealthMetric({
+  label,
+  value,
+  warn,
+  danger,
+}: {
+  label: string;
+  value: string | number;
+  warn?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <div className="text-center">
+      <div className={cn(
+        'text-xl font-bold',
+        danger ? 'text-red-600' : warn ? 'text-amber-600' : 'text-foreground'
+      )}>
+        {value}
+      </div>
+      <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide mt-0.5">
+        {label}
+      </div>
     </div>
   );
 }
