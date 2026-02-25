@@ -92,15 +92,19 @@ const SAMPLE_DEALS = [
 /** GET /api/pipedrive/deals */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const status = searchParams.get('status') as 'open' | 'won' | 'lost' | null;
+  const status = searchParams.get('status') as 'open' | 'won' | 'lost' | 'all_not_deleted' | null;
 
   if (!isConfigured()) {
-    const filtered = status ? SAMPLE_DEALS.filter((d) => d.status === status) : SAMPLE_DEALS;
+    // 'all_not_deleted' means return everything — don't filter by that literal string
+    const filtered =
+      !status || status === 'all_not_deleted'
+        ? SAMPLE_DEALS
+        : SAMPLE_DEALS.filter((d) => d.status === status);
     return NextResponse.json({ deals: filtered, demo_mode: true });
   }
 
   // Fetch up to 500 deals (Pipedrive max per request) to avoid missing deals
-  const result = await getDeals({ status: status ?? 'open', limit: 500 });
+  const result = await getDeals({ status: status ?? 'all_not_deleted', limit: 500 });
 
   if (!result.success) {
     return NextResponse.json({ error: result.error, deals: [], demo_mode: false }, { status: 502 });

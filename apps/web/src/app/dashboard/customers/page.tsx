@@ -75,25 +75,47 @@ export default function CustomersPage() {
   const [stages, setStages] = useState<{ id: number; name: string }[]>([]);
   const [demoMode, setDemoMode] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [sortKey, setSortKey] = useState<SortKey>('last_activity');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/pipedrive/deals?status=all_not_deleted')
-        .then((r) => r.json())
-        .then((d) => {
-          setDeals(d.deals ?? []);
-          setDemoMode(!!d.demo_mode);
-        })
-        .catch(() => {}),
-      fetch('/api/pipedrive/pipeline')
-        .then((r) => r.json())
-        .then((d) => setStages(d.stages ?? []))
-        .catch(() => {}),
-    ]).finally(() => setLoading(false));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    async function load() {
+      try {
+        const [dealsRes, pipelineRes] = await Promise.all([
+          fetch('/api/pipedrive/deals?status=all_not_deleted', { signal: controller.signal }),
+          fetch('/api/pipedrive/pipeline', { signal: controller.signal }),
+        ]);
+
+        if (!dealsRes.ok) throw new Error(`Deals API returned ${dealsRes.status}`);
+
+        const dealsData = await dealsRes.json();
+        setDeals(dealsData.deals ?? []);
+        setDemoMode(!!dealsData.demo_mode);
+
+        if (pipelineRes.ok) {
+          const pipelineData = await pipelineRes.json();
+          setStages(pipelineData.stages ?? []);
+        }
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') {
+          setError('Request timed out. Check your network connection and try again.');
+        } else {
+          setError((err as Error).message || 'Failed to load deals.');
+        }
+      } finally {
+        clearTimeout(timeout);
+        setLoading(false);
+      }
+    }
+
+    load();
+    return () => { controller.abort(); clearTimeout(timeout); };
   }, []);
 
   function toggleSort(key: SortKey) {
@@ -152,6 +174,20 @@ export default function CustomersPage() {
           </p>
         </div>
       </div>
+
+      {/* Error banner */}
+      {error && !loading && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-800">
+          <AlertCircle size={16} className="shrink-0 text-red-600" />
+          <span>{error}</span>
+          <button
+            onClick={() => { setError(null); setLoading(true); window.location.reload(); }}
+            className="ml-auto text-red-700 font-semibold hover:underline whitespace-nowrap"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Demo mode banner */}
       {demoMode && !loading && (
@@ -243,10 +279,10 @@ export default function CustomersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.length === 0 && (
+                  {filtered.length === 0 && !error && (
                     <tr>
                       <td colSpan={8} className="px-6 py-10 text-center text-muted-foreground text-sm">
-                        No deals found.
+                        {search || stageFilter !== 'all' ? 'No deals match your filters.' : 'No deals found.'}
                       </td>
                     </tr>
                   )}

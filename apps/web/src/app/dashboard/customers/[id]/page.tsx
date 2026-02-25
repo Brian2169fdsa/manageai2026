@@ -113,24 +113,42 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const [data, setData] = useState<DealDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('Activity');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    fetch(`/api/pipedrive/deals/${id}`)
-      .then((r) => r.json())
-      .then((d) => {
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    async function load() {
+      try {
+        const res = await fetch(`/api/pipedrive/deals/${id}`, { signal: controller.signal });
+        if (!res.ok) throw new Error(`API returned ${res.status}`);
+        const d: DealDetail = await res.json();
         setData(d);
-        // Once we have company/email, fetch tickets
+        // Once we have company/email, fetch matching tickets
         const orgName = getStr(d.deal ?? {}, 'org_name');
         const primaryPerson = d.persons?.[0];
         const email = primaryPerson ? getEmail(primaryPerson.email) : '';
         fetchTickets(orgName, email);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') {
+          setFetchError('Request timed out. Check your connection and try again.');
+        } else {
+          setFetchError((err as Error).message || 'Failed to load deal.');
+        }
+      } finally {
+        clearTimeout(timeout);
+        setLoading(false);
+      }
+    }
+
+    load();
+    return () => { controller.abort(); clearTimeout(timeout); };
   }, [id]);
 
   async function fetchTickets(orgName: string, email: string) {
@@ -144,6 +162,8 @@ export default function CustomerDetailPage() {
       }
       const { data: rows } = await query;
       setTickets((rows as Ticket[]) ?? []);
+    } catch {
+      // Tickets are non-critical — silently fail, show empty state
     } finally {
       setTicketsLoading(false);
     }
@@ -159,10 +179,28 @@ export default function CustomerDetailPage() {
     );
   }
 
-  if (!data?.deal) {
+  if (fetchError || !data?.deal) {
     return (
-      <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 max-w-xl">
-        <AlertCircle size={16} /> Could not load deal #{id}.
+      <div className="space-y-4 max-w-xl">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft size={15} /> Back
+        </button>
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-4 text-sm text-red-800">
+          <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-600" />
+          <div>
+            <div className="font-semibold mb-1">Could not load deal #{id}</div>
+            <div className="text-red-700">{fetchError ?? 'No data returned from the API.'}</div>
+            <button
+              onClick={() => { setFetchError(null); setLoading(true); window.location.reload(); }}
+              className="mt-2 text-red-700 font-semibold hover:underline"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -400,10 +438,10 @@ export default function CustomerDetailPage() {
         {/* Activity Tab */}
         {activeTab === 'Activity' && (
           <div className="space-y-3">
-            {data.activities.length === 0 && (
+            {(data.activities ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">No activities yet.</p>
             )}
-            {data.activities.map((act, i) => (
+            {(data.activities ?? []).map((act, i) => (
               <div key={(act.id as number) ?? i} className="flex gap-3 items-start">
                 <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
                   <Clock size={13} className="text-blue-600" />
@@ -426,10 +464,10 @@ export default function CustomerDetailPage() {
         {/* Notes Tab */}
         {activeTab === 'Notes' && (
           <div className="space-y-3">
-            {data.notes.length === 0 && (
+            {(data.notes ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">No notes yet.</p>
             )}
-            {data.notes.map((note, i) => (
+            {(data.notes ?? []).map((note, i) => (
               <Card key={(note.id as number) ?? i}>
                 <CardContent className="pt-4 pb-3 px-4">
                   <div className="flex items-center justify-between mb-2">
@@ -450,10 +488,10 @@ export default function CustomerDetailPage() {
         {/* Files Tab */}
         {activeTab === 'Files' && (
           <div className="space-y-2">
-            {data.files.length === 0 && (
+            {(data.files ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">No files attached to this deal.</p>
             )}
-            {data.files.map((file, i) => (
+            {(data.files ?? []).map((file, i) => (
               <div key={(file.id as number) ?? i} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                 <Paperclip size={14} className="text-muted-foreground" />
                 <div className="flex-1">
@@ -478,10 +516,10 @@ export default function CustomerDetailPage() {
         {/* History Tab */}
         {activeTab === 'History' && (
           <div className="space-y-3">
-            {data.flow.length === 0 && (
+            {(data.flow ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">No history events.</p>
             )}
-            {data.flow.map((event, i) => (
+            {(data.flow ?? []).map((event, i) => (
               <div key={i} className="flex gap-3 items-start">
                 <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0 mt-0.5">
                   <History size={13} className="text-muted-foreground" />
