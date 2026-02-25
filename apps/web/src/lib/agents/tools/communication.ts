@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { AgentTool } from '../types';
+import * as slack from '@/lib/integrations/slack';
 
 export const communicationTools: AgentTool[] = [
   {
@@ -95,13 +96,14 @@ export const communicationTools: AgentTool[] = [
 
   {
     name: 'sendSlackMessage',
-    description: 'Send a message to a Slack channel. Currently logs the intent and returns a mock confirmation.',
+    description:
+      'Send a real message to a Slack channel. If SLACK_BOT_TOKEN is configured, the message is delivered immediately via the Slack Web API. Otherwise logs the intent and returns a demo confirmation.',
     input_schema: {
       type: 'object',
       properties: {
         channel: {
           type: 'string',
-          description: 'Slack channel name (e.g. "#general", "#sales", "@username")',
+          description: 'Slack channel name or ID (e.g. "#general", "#sales", "@username", "C0123ABC")',
         },
         message: {
           type: 'string',
@@ -112,17 +114,38 @@ export const communicationTools: AgentTool[] = [
     },
     execute: async ({ channel, message }: any, _supabase: any) => {
       const start = Date.now();
-      console.log(`[tool:sendSlackMessage] Intent: channel=${channel}, message="${message.slice(0, 100)}"`);
-      const result = {
+      console.log(`[tool:sendSlackMessage] channel=${channel}, message="${message.slice(0, 100)}"`);
+
+      if (slack.isConfigured()) {
+        const result = await slack.postMessage(channel, message);
+        const duration_ms = Date.now() - start;
+
+        if (!result.success) {
+          console.error(`[tool:sendSlackMessage] Slack error: ${result.error}`);
+          return { success: false, error: result.error, duration_ms };
+        }
+
+        console.log(`[tool:sendSlackMessage] Sent via Slack API in ${duration_ms}ms`);
+        return {
+          success: true,
+          ts: result.data?.ts,
+          channel: result.data?.channel ?? channel,
+          sent_at: new Date().toISOString(),
+          duration_ms,
+        };
+      }
+
+      // Demo mode — no SLACK_BOT_TOKEN
+      console.log(`[tool:sendSlackMessage] DEMO MODE — no SLACK_BOT_TOKEN`);
+      const duration_ms = Date.now() - start;
+      return {
         success: true,
-        ts: `${Date.now() / 1000}`,
+        message: `[DEMO MODE] Would send Slack message to ${channel}: "${message}"`,
+        demo_mode: true,
         channel,
         sent_at: new Date().toISOString(),
-        note: 'Slack message logged (Slack integration not yet configured)',
-        duration_ms: Date.now() - start,
+        duration_ms,
       };
-      console.log(`[tool:sendSlackMessage] Mock sent in ${result.duration_ms}ms`);
-      return result;
     },
   },
 
