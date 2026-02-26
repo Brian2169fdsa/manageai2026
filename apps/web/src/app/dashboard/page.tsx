@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase/client';
 import { Ticket, TicketStatus } from '@/types';
 import Link from 'next/link';
-import { ClipboardList, CheckCircle, Clock, Zap, PlusCircle, ArrowRight } from 'lucide-react';
+import { ClipboardList, CheckCircle, Clock, Zap, PlusCircle, ArrowRight, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -61,9 +61,15 @@ const PLATFORM_BADGE: Record<string, string> = {
   zapier: 'bg-orange-100 text-orange-700',
 };
 
+interface ConfigStatus {
+  slack: boolean;
+  resend: boolean;
+}
+
 export default function DashboardPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState<ConfigStatus | null>(null);
 
   useEffect(() => {
     supabase
@@ -74,6 +80,11 @@ export default function DashboardPage() {
         setTickets((data as Ticket[]) ?? []);
         setLoading(false);
       });
+
+    fetch('/api/config/status')
+      .then((r) => r.json())
+      .then((d) => setConfig(d))
+      .catch(() => {});
   }, []);
 
   const recent = tickets.slice(0, 6);
@@ -95,6 +106,30 @@ export default function DashboardPage() {
           </Button>
         </Link>
       </div>
+
+      {/* Integration warnings — shown when optional keys are missing */}
+      {config && (!config.slack || !config.resend) && (
+        <div className="flex flex-wrap gap-2">
+          {!config.slack && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-medium">
+              <AlertTriangle size={13} className="text-amber-500 shrink-0" />
+              <span>Slack not configured — agents post to console only.</span>
+              <Link href="/settings" className="underline underline-offset-2 hover:text-amber-900">
+                Add SLACK_BOT_TOKEN →
+              </Link>
+            </div>
+          )}
+          {!config.resend && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-medium">
+              <AlertTriangle size={13} className="text-amber-500 shrink-0" />
+              <span>Email not configured — client notifications are disabled.</span>
+              <Link href="/settings" className="underline underline-offset-2 hover:text-amber-900">
+                Add RESEND_API_KEY →
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Status cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
