@@ -98,11 +98,26 @@ export default function BuildTeamPage() {
   ).length;
   const built = tickets.filter((t) => ['REVIEW_PENDING', 'APPROVED', 'DEPLOYED', 'CLOSED'].includes(t.status)).length;
 
+  const activeAgents = AGENTS.filter((a) => a.status === 'active').length;
+
+  // Avg build time: mean of (updated_at - created_at) for completed tickets
+  const avgBuildTimeDays = (() => {
+    const completed = tickets.filter((t) =>
+      ['APPROVED', 'DEPLOYED', 'CLOSED'].includes(t.status)
+    );
+    if (completed.length === 0) return null;
+    const totalDays = completed.reduce((sum, t) => {
+      const ms = new Date(t.updated_at).getTime() - new Date(t.created_at).getTime();
+      return sum + ms / 86400000;
+    }, 0);
+    return (totalDays / completed.length).toFixed(1);
+  })();
+
   const stats = [
     { label: 'Tickets analyzed', value: loading ? '–' : analyzed, icon: Brain, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'Builds generated', value: loading ? '–' : built, icon: Cpu, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Active agents', value: 3, icon: Bot, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Avg turnaround', value: '~45s', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'Active agents', value: activeAgents, icon: Bot, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Avg build time', value: loading ? '–' : avgBuildTimeDays !== null ? `${avgBuildTimeDays}d` : 'N/A', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
   ];
 
   return (

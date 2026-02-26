@@ -130,6 +130,30 @@ export default function EngineeringPage() {
     return Math.round((mcpArtifacts / totalArtifacts) * 100);
   }, [mcpArtifacts, totalArtifacts, artifactsLoading]);
 
+  // Avg build time: mean of (updated_at - created_at) for completed tickets
+  const avgBuildTime = useMemo(() => {
+    const completed = tickets.filter((t) =>
+      ['APPROVED', 'DEPLOYED', 'CLOSED'].includes(t.status)
+    );
+    if (completed.length === 0) return null;
+    const totalDays = completed.reduce((sum, t) => {
+      const ms = new Date(t.updated_at).getTime() - new Date(t.created_at).getTime();
+      return sum + ms / 86400000;
+    }, 0);
+    return (totalDays / completed.length).toFixed(1);
+  }, [tickets]);
+
+  // Deploy success rate: from deployments table when available, else ticket ratio
+  const deploySuccessRate = useMemo(() => {
+    if (!deploymentsLoading && deployments.length > 0) {
+      const success = deployments.filter(
+        (d) => d.status === 'deployed' || d.status === 'manual_guide_generated'
+      ).length;
+      return Math.round((success / deployments.length) * 100);
+    }
+    return tickets.length > 0 ? Math.round((deployed / tickets.length) * 100) : 0;
+  }, [deployments, deploymentsLoading, deployed, tickets]);
+
   // Build queue: SUBMITTED, ANALYZING, BUILDING — priority DESC, created_at ASC
   const buildQueue = useMemo(() => {
     return tickets
@@ -194,7 +218,7 @@ export default function EngineeringPage() {
     },
     {
       label: 'Deploy Success Rate',
-      value: loading ? '–' : `${Math.max(deployRate, 92)}%`,
+      value: (loading || deploymentsLoading) ? '–' : `${deploySuccessRate}%`,
       icon: CheckCircle,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
@@ -202,11 +226,11 @@ export default function EngineeringPage() {
     },
     {
       label: 'Avg Build Time',
-      value: '2.8 days',
+      value: loading ? '–' : avgBuildTime !== null ? `${avgBuildTime}d` : 'N/A',
       icon: Clock,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
-      sub: 'End-to-end',
+      sub: 'Submission to completion',
     },
     {
       label: 'Template Match Rate',
