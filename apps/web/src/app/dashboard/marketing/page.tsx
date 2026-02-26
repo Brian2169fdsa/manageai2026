@@ -4,29 +4,58 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase/client';
 import { Ticket } from '@/types';
 import {
-  Megaphone, FileText, Users, TrendingUp, BarChart3, Calendar,
+  Megaphone, FileText, Users, TrendingUp, BarChart3, Calendar, Activity,
 } from 'lucide-react';
 import { AgentButton } from '@/components/agents/AgentButton';
 import { agentConfigs } from '@/lib/agents/configs';
 
-// Simple calendar content for this month
-function ContentCalendar() {
+interface ActivityEvent {
+  id: string;
+  created_at: string;
+  department?: string;
+  agent_name?: string;
+  event_type?: string;
+  message?: string;
+  content?: string;
+}
+
+interface DeploymentRecord {
+  id: string;
+  platform: string;
+  status: string;
+  created_at: string;
+}
+
+// Content calendar — driven by real activity_events
+function ContentCalendar({ events, loading }: { events: ActivityEvent[]; loading: boolean }) {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
 
-  const events: Record<number, { label: string; color: string }> = {
-    3: { label: 'Blog: n8n Intro', color: 'bg-blue-100 text-blue-700' },
-    7: { label: 'Social burst', color: 'bg-purple-100 text-purple-700' },
-    10: { label: 'Case study', color: 'bg-emerald-100 text-emerald-700' },
-    14: { label: 'Newsletter', color: 'bg-amber-100 text-amber-700' },
-    18: { label: 'LinkedIn post', color: 'bg-blue-100 text-blue-700' },
-    21: { label: 'Webinar promo', color: 'bg-rose-100 text-rose-700' },
-    25: { label: 'Blog: ROI', color: 'bg-blue-100 text-blue-700' },
-    28: { label: 'Monthly wrap', color: 'bg-emerald-100 text-emerald-700' },
-  };
+  const EVENT_COLORS = [
+    'bg-blue-100 text-blue-700',
+    'bg-purple-100 text-purple-700',
+    'bg-emerald-100 text-emerald-700',
+    'bg-amber-100 text-amber-700',
+    'bg-rose-100 text-rose-700',
+  ];
+
+  const calendarEvents: Record<number, { label: string; color: string }> = {};
+  events.forEach((ev, i) => {
+    const d = new Date(ev.created_at);
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      const day = d.getDate();
+      if (!calendarEvents[day]) {
+        const raw = ev.message ?? ev.event_type ?? 'Content event';
+        calendarEvents[day] = {
+          label: raw.length > 15 ? raw.slice(0, 14) + '…' : raw,
+          color: EVENT_COLORS[i % EVENT_COLORS.length],
+        };
+      }
+    }
+  });
 
   const weeks: (number | null)[][] = [];
   let week: (number | null)[] = Array(firstDay).fill(null);
@@ -40,47 +69,63 @@ function ContentCalendar() {
   }
 
   const monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const hasEvents = Object.keys(calendarEvents).length > 0;
 
   return (
     <div>
       <div className="text-xs font-semibold text-muted-foreground mb-3">{monthName}</div>
-      <div className="grid grid-cols-7 gap-0.5 text-center">
-        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-          <div key={d} className="text-[10px] font-semibold text-muted-foreground pb-1">{d}</div>
-        ))}
-        {weeks.map((w, wi) =>
-          w.map((day, di) => (
-            <div
-              key={`${wi}-${di}`}
-              className={`min-h-[44px] rounded-md p-0.5 text-[10px] border ${
-                day === now.getDate() ? 'border-blue-300 bg-blue-50' : 'border-transparent'
-              }`}
-            >
-              {day !== null && (
-                <>
-                  <div className={`font-medium mb-0.5 ${day === now.getDate() ? 'text-blue-700' : 'text-foreground'}`}>
-                    {day}
-                  </div>
-                  {events[day] && (
-                    <div className={`rounded px-0.5 py-0.5 leading-tight text-[9px] font-medium truncate ${events[day].color}`}>
-                      {events[day].label}
-                    </div>
+      {loading ? (
+        <div className="h-40 bg-muted animate-pulse rounded-lg" />
+      ) : (
+        <>
+          <div className="grid grid-cols-7 gap-0.5 text-center">
+            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+              <div key={d} className="text-[10px] font-semibold text-muted-foreground pb-1">{d}</div>
+            ))}
+            {weeks.map((w, wi) =>
+              w.map((day, di) => (
+                <div
+                  key={`${wi}-${di}`}
+                  className={`min-h-[44px] rounded-md p-0.5 text-[10px] border ${
+                    day === now.getDate() ? 'border-blue-300 bg-blue-50' : 'border-transparent'
+                  }`}
+                >
+                  {day !== null && (
+                    <>
+                      <div className={`font-medium mb-0.5 ${day === now.getDate() ? 'text-blue-700' : 'text-foreground'}`}>
+                        {day}
+                      </div>
+                      {calendarEvents[day] && (
+                        <div className={`rounded px-0.5 py-0.5 leading-tight text-[9px] font-medium truncate ${calendarEvents[day].color}`}>
+                          {calendarEvents[day].label}
+                        </div>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-            </div>
-          ))
-        )}
-      </div>
+                </div>
+              ))
+            )}
+          </div>
+          {!hasEvents && (
+            <div className="mt-3 text-center text-xs text-muted-foreground">No content scheduled</div>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
 export default function MarketingPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [contentEvents, setContentEvents] = useState<ActivityEvent[]>([]);
+  const [deployments, setDeployments] = useState<DeploymentRecord[]>([]);
+  const [marketingActionCount, setMarketingActionCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [deploymentsLoading, setDeploymentsLoading] = useState(true);
 
   useEffect(() => {
+    // Tickets — completed builds = case study candidates
     supabase
       .from('tickets')
       .select('*')
@@ -89,48 +134,92 @@ export default function MarketingPage() {
         setTickets((data as Ticket[]) ?? []);
         setLoading(false);
       });
+
+    // Activity events for content calendar + agent action count
+    const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    Promise.all([
+      supabase
+        .from('activity_events')
+        .select('id, created_at, department, agent_name, event_type, message, content')
+        .or('department.eq.marketing,event_type.ilike.%content%')
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('activity_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('department', 'marketing')
+        .gte('created_at', since30d),
+    ]).then(([evRes, countRes]) => {
+      setContentEvents((evRes.data as ActivityEvent[]) ?? []);
+      setMarketingActionCount(countRes.count ?? 0);
+      setEventsLoading(false);
+    });
+
+    // Deployments last 30 days — for ROI basis metrics
+    supabase
+      .from('deployments')
+      .select('id, platform, status, created_at')
+      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setDeployments((data as DeploymentRecord[]) ?? []);
+        setDeploymentsLoading(false);
+      });
   }, []);
 
-  const templateUsage = [
-    { name: 'Lead Capture → CRM', uses: 24, trend: '+3' },
-    { name: 'Email Sequence', uses: 18, trend: '+5' },
-    { name: 'Slack Notifier', uses: 14, trend: '+1' },
-    { name: 'Invoice Automation', uses: 11, trend: '0' },
-    { name: 'Data Sync', uses: 9, trend: '+2' },
-  ];
+  // Derived values
+  const completedBuilds = tickets.filter((t) => ['DEPLOYED', 'CLOSED'].includes(t.status)).length;
+  const newTickets30d = tickets.filter(
+    (t) => new Date(t.created_at).getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000
+  ).length;
+  const successfulDeploys = deployments.filter(
+    (d) => d.status === 'deployed' || d.status === 'manual_guide_generated'
+  ).length;
+
+  // Platform usage from tickets (real data replacing hardcoded template list)
+  const platformTotals = (['n8n', 'make', 'zapier'] as const)
+    .map((p) => ({
+      name: p === 'n8n' ? 'n8n Workflows' : p === 'make' ? 'Make.com Scenarios' : 'Zapier Zaps',
+      uses: tickets.filter((t) => t.ticket_type === p).length,
+      platform: p,
+    }))
+    .filter((p) => p.uses > 0)
+    .sort((a, b) => b.uses - a.uses);
+
+  const maxUses = Math.max(1, ...platformTotals.map((p) => p.uses));
 
   const kpis = [
     {
-      label: 'Content Published',
-      value: '28',
+      label: 'Completed Builds',
+      value: loading ? '–' : String(completedBuilds),
       icon: FileText,
       color: 'text-blue-600',
       bg: 'bg-blue-50',
-      sub: 'This month',
+      sub: 'Case study-ready',
     },
     {
       label: 'Social Reach',
-      value: '14.2k',
+      value: '—',
       icon: Users,
       color: 'text-purple-600',
       bg: 'bg-purple-50',
-      sub: '+18% vs last month',
+      sub: 'No data source yet',
     },
     {
-      label: 'Lead Gen',
-      value: loading ? '–' : String(Math.max(tickets.length + 9, 9)),
+      label: 'New Tickets (30d)',
+      value: loading ? '–' : String(newTickets30d),
       icon: TrendingUp,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
-      sub: 'From content',
+      sub: 'Inbound this month',
     },
     {
-      label: 'Campaign ROI',
-      value: '340%',
+      label: 'Agent Actions (30d)',
+      value: eventsLoading ? '–' : String(marketingActionCount ?? 0),
       icon: BarChart3,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
-      sub: 'Avg across campaigns',
+      sub: 'Marketing AI activity',
     },
   ];
 
@@ -148,6 +237,7 @@ export default function MarketingPage() {
         </div>
       </div>
 
+      {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {kpis.map(({ label, value, icon: Icon, color, bg, sub }) => (
           <Card key={label}>
@@ -168,7 +258,7 @@ export default function MarketingPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Content calendar */}
+        {/* Content calendar — real activity_events */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
@@ -179,48 +269,122 @@ export default function MarketingPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <ContentCalendar />
+            <ContentCalendar events={contentEvents} loading={eventsLoading} />
           </CardContent>
         </Card>
 
-        {/* Template usage */}
+        {/* Platform usage — real ticket counts */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              Top Templates Used
+              Platform Usage
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {templateUsage.map((t, i) => {
-                const pct = Math.round((t.uses / templateUsage[0].uses) * 100);
-                return (
-                  <div key={t.name}>
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="font-medium">{t.name}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">{t.uses} uses</span>
-                        <span className={`font-semibold ${t.trend !== '0' ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-                          {t.trend !== '0' ? `↑${t.trend}` : '—'}
-                        </span>
+            {loading ? (
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-8 bg-muted animate-pulse rounded" />
+                ))}
+              </div>
+            ) : platformTotals.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-8 text-center">No data</div>
+            ) : (
+              <div className="space-y-3">
+                {platformTotals.map((p, i) => {
+                  const pct = Math.round((p.uses / maxUses) * 100);
+                  return (
+                    <div key={p.platform}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-muted-foreground">{p.uses} builds</span>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-1.5">
+                        <div
+                          className="h-1.5 rounded-full"
+                          style={{
+                            width: `${pct}%`,
+                            background: `hsl(${214 - i * 20}, 84%, ${56 - i * 3}%)`,
+                          }}
+                        />
                       </div>
                     </div>
-                    <div className="w-full bg-muted rounded-full h-1.5">
-                      <div
-                        className="h-1.5 rounded-full"
-                        style={{
-                          width: `${pct}%`,
-                          background: `hsl(${214 - i * 20}, 84%, ${56 - i * 3}%)`,
-                        }}
-                      />
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Deploy stats from deployments table */}
+            {!deploymentsLoading && (
+              <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-3">
+                <div className="text-center p-3 rounded-xl bg-muted/30 border border-muted">
+                  <div className="text-lg font-bold text-emerald-600">{successfulDeploys}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Successful deploys (30d)</div>
+                </div>
+                <div className="text-center p-3 rounded-xl bg-muted/30 border border-muted">
+                  <div className="text-lg font-bold">{deployments.length}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Deploy attempts (30d)</div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Marketing agent activity feed */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity size={14} className="text-muted-foreground" />
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Marketing Agent Activity
+              </CardTitle>
+            </div>
+            {!eventsLoading && contentEvents.length > 0 && (
+              <span className="text-xs text-muted-foreground">{contentEvents.length} events</span>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="px-0 pb-0">
+          {eventsLoading ? (
+            <div className="px-5 pb-4 space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-10 bg-muted animate-pulse rounded" />
+              ))}
+            </div>
+          ) : contentEvents.length === 0 ? (
+            <div className="px-5 pb-8 text-center py-8 text-sm text-muted-foreground">
+              No marketing agent activity yet — actions will appear here
+            </div>
+          ) : (
+            <div className="divide-y">
+              {contentEvents.slice(0, 8).map((ev) => {
+                const msg = ev.message ?? ev.content ?? ev.event_type ?? 'Agent action';
+                const ts = new Date(ev.created_at);
+                const timeStr = ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                return (
+                  <div key={ev.id} className="flex items-start gap-3 px-5 py-3">
+                    <div className="mt-1.5 w-2 h-2 rounded-full shrink-0 bg-amber-400" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-amber-600">
+                        {(ev.agent_name ?? 'MARKETING AI').toUpperCase()}
+                        {ev.event_type && (
+                          <span className="ml-1.5 text-muted-foreground font-normal">
+                            · {ev.event_type}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-foreground mt-0.5 line-clamp-2">{msg}</div>
                     </div>
+                    <div className="text-xs text-muted-foreground shrink-0 mt-0.5">{timeStr}</div>
                   </div>
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
 
       <AgentButton config={agentConfigs.marketing} />
     </div>
