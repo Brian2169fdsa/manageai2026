@@ -100,7 +100,19 @@ export default function AgentJobsPage() {
     }));
 
     try {
-      const res = await fetch(`/api/scheduler?job=${encodeURIComponent(job.name)}`);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const res = await fetch('/api/scheduler', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token
+            ? { Authorization: `Bearer ${session.access_token}` }
+            : {}),
+        },
+        body: JSON.stringify({ job: job.name }),
+      });
       const data = await res.json();
       setRunStates((prev) => ({
         ...prev,
@@ -140,6 +152,12 @@ export default function AgentJobsPage() {
     enabled: enabledOverrides[job.name] ?? job.enabled,
   }));
 
+  // Most recent run per job (recentRuns is already sorted desc by started_at)
+  const lastRunByJob = recentRuns.reduce<Record<string, JobRun>>((acc, run) => {
+    if (!acc[run.job_name]) acc[run.job_name] = run;
+    return acc;
+  }, {});
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
@@ -170,6 +188,7 @@ export default function AgentJobsPage() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">Job</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Department</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Schedule</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Last Run</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
               <th className="text-right px-4 py-3 font-medium text-gray-600">Action</th>
             </tr>
@@ -205,6 +224,32 @@ export default function AgentJobsPage() {
                       <Clock size={13} />
                       {cronLabel(job.schedule)}
                     </div>
+                  </td>
+
+                  {/* Last Run */}
+                  <td className="px-4 py-3 text-xs">
+                    {loadingRuns ? (
+                      <span className="text-gray-300">—</span>
+                    ) : lastRunByJob[job.name] ? (
+                      <div>
+                        <span
+                          className={
+                            lastRunByJob[job.name].status === 'completed'
+                              ? 'text-emerald-600'
+                              : lastRunByJob[job.name].status === 'failed'
+                                ? 'text-red-500'
+                                : 'text-amber-500'
+                          }
+                        >
+                          {timeAgo(lastRunByJob[job.name].started_at)}
+                        </span>
+                        <span className="ml-1 text-gray-400 capitalize">
+                          · {lastRunByJob[job.name].status}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">Never</span>
+                    )}
                   </td>
 
                   {/* Toggle */}
