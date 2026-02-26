@@ -120,6 +120,27 @@ export default function DashboardPage() {
         })}
       </div>
 
+      {/* Quick links */}
+      <div className="flex flex-wrap gap-2">
+        {[
+          { label: 'CEO Dashboard', href: '/dashboard/ceo' },
+          { label: 'Sales', href: '/dashboard/sales' },
+          { label: 'Delivery', href: '/dashboard/delivery' },
+          { label: 'Engineering', href: '/dashboard/engineering' },
+          { label: 'Templates', href: '/dashboard/templates' },
+          { label: 'Customers', href: '/dashboard/customers' },
+        ].map(({ label, href }) => (
+          <Link
+            key={label}
+            href={href}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-white hover:bg-muted/40 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {label}
+            <ArrowRight size={12} />
+          </Link>
+        ))}
+      </div>
+
       {/* Recent tickets */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-3 pt-5">

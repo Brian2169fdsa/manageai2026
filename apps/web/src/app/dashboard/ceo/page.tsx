@@ -169,6 +169,24 @@ export default function CEOPage() {
   const capacityLabel =
     activeBuilds < 3 ? 'Healthy' : activeBuilds <= 5 ? 'Busy' : 'At Capacity';
 
+  // Avg build time: computed from completed tickets using created_at → updated_at (if present)
+  const completedTickets = tickets.filter((t) => ['DEPLOYED', 'CLOSED'].includes(t.status));
+  const avgBuildTimeDays = (() => {
+    if (completedTickets.length === 0) return null;
+    const totalMs = completedTickets.reduce((sum, t) => {
+      const row = t as unknown as Record<string, string>;
+      const endDate = row.updated_at ? new Date(row.updated_at) : new Date();
+      return sum + (endDate.getTime() - new Date(t.created_at).getTime());
+    }, 0);
+    return totalMs / completedTickets.length / (1000 * 60 * 60 * 24);
+  })();
+  const avgBuildTimeStr =
+    avgBuildTimeDays === null
+      ? '—'
+      : avgBuildTimeDays < 1
+        ? '<1 day'
+        : `${avgBuildTimeDays.toFixed(1)} days`;
+
   // Status counts for Build Pipeline Health
   const statusCounts: Record<string, number> = {};
   for (const t of tickets) {
@@ -225,11 +243,13 @@ export default function CEOPage() {
     },
     {
       label: 'Avg Build Time',
-      value: loading ? '–' : '3.2 days',
+      value: loading ? '–' : avgBuildTimeStr,
       icon: Clock,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
-      sub: 'Across all platforms',
+      sub: completedTickets.length > 0
+        ? `Based on ${completedTickets.length} completed`
+        : 'No completed tickets yet',
     },
   ];
 
@@ -558,8 +578,8 @@ export default function CEOPage() {
             </div>
             <div className="mt-4 grid grid-cols-3 gap-3">
               {[
-                { label: 'Avg delivery', value: '3.2 days' },
-                { label: 'Client satisfaction', value: '4.8 / 5' },
+                { label: 'Avg delivery', value: loading ? '–' : avgBuildTimeStr },
+                { label: 'Client satisfaction', value: '—' },
                 { label: 'This week', value: `${tickets.filter((t) => new Date(t.created_at) > new Date(Date.now() - 7 * 86400000)).length} new` },
               ].map(({ label, value }) => (
                 <div key={label} className="text-center p-3 rounded-xl border border-muted">
