@@ -10,6 +10,7 @@ import {
   ExternalLink, Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 const PLATFORM_COLOR: Record<string, string> = {
   n8n: 'bg-red-100 text-red-700',
@@ -17,9 +18,22 @@ const PLATFORM_COLOR: Record<string, string> = {
   zapier: 'bg-orange-100 text-orange-700',
 };
 
+interface DeploymentRecord {
+  id: string;
+  ticket_id: string;
+  platform: string;
+  status: string;
+  external_url?: string;
+  created_at: string;
+  // joined
+  company_name?: string;
+  project_name?: string;
+}
+
 export default function DeployPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deploymentRecords, setDeploymentRecords] = useState<DeploymentRecord[]>([]);
 
   useEffect(() => {
     supabase
@@ -29,6 +43,30 @@ export default function DeployPage() {
       .then(({ data }) => {
         setTickets((data as Ticket[]) ?? []);
         setLoading(false);
+      });
+
+    // Also fetch actual deployment records from deployments table
+    supabase
+      .from('deployments')
+      .select('id, ticket_id, platform, status, external_url, created_at')
+      .order('created_at', { ascending: false })
+      .limit(25)
+      .then(async ({ data }) => {
+        if (data && data.length > 0) {
+          const ticketIds = [...new Set(data.map((d) => d.ticket_id))];
+          const { data: ticketData } = await supabase
+            .from('tickets')
+            .select('id, company_name, project_name')
+            .in('id', ticketIds);
+          const ticketMap = new Map((ticketData ?? []).map((t) => [t.id, t]));
+          setDeploymentRecords(
+            data.map((d) => ({
+              ...d,
+              company_name: ticketMap.get(d.ticket_id)?.company_name ?? 'Unknown',
+              project_name: ticketMap.get(d.ticket_id)?.project_name ?? 'Untitled',
+            }))
+          );
+        }
       });
   }, []);
 
@@ -43,6 +81,19 @@ export default function DeployPage() {
       d.getMonth() === now.getMonth() &&
       d.getDate() === now.getDate();
   });
+
+  // Success rate: use actual deployment records when available
+  const deploySuccessCount = deploymentRecords.filter(
+    (d) => d.status === 'deployed' || d.status === 'success'
+  ).length;
+  const deployFailCount = deploymentRecords.filter((d) => d.status === 'failed').length;
+  const successRate = loading
+    ? '–'
+    : deploymentRecords.length > 0
+    ? `${Math.round((deploySuccessCount / deploymentRecords.length) * 100)}%`
+    : deployed.length > 0
+    ? `${Math.round((deployed.length / Math.max(total, 1)) * 100)}%`
+    : '—';
 
   const kpis = [
     {
@@ -65,7 +116,7 @@ export default function DeployPage() {
     },
     {
       label: 'Total Deployed',
-      value: loading ? '–' : deployed.length,
+      value: loading ? '–' : deploymentRecords.length > 0 ? deploymentRecords.length : deployed.length,
       icon: Rocket,
       color: 'text-blue-600',
       bg: 'bg-blue-50',
@@ -74,12 +125,12 @@ export default function DeployPage() {
     },
     {
       label: 'Success Rate',
-      value: loading ? '–' : total > 0 ? `${Math.round((deployed.length / Math.max(total, 1)) * 100) || 98}%` : '98%',
+      value: successRate,
       icon: Package,
       color: 'text-purple-600',
       bg: 'bg-purple-50',
       border: 'border-purple-200',
-      sub: 'Deploy success rate',
+      sub: deploymentRecords.length > 0 ? `${deployFailCount} failed` : 'Based on ticket status',
     },
   ];
 
@@ -249,20 +300,77 @@ export default function DeployPage() {
       {/* Deployment history */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Deployment History
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Deployment History
+            </CardTitle>
+            {deploymentRecords.length > 0 && (
+              <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                from deployments table
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="px-0 pb-0">
           {loading ? (
             <div className="px-5 pb-4 space-y-2">
               {[...Array(4)].map((_, i) => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}
             </div>
+          ) : deploymentRecords.length > 0 ? (
+            // Prefer actual deployment records (have external URLs, real status)
+            <div className="divide-y">
+              {deploymentRecords.map((d) => {
+                const isSuccess = d.status === 'deployed' || d.status === 'success';
+                const isFailed = d.status === 'failed';
+                return (
+                  <div key={d.id} className="flex items-center gap-3 px-5 py-3 text-sm">
+                    {isFailed ? (
+                      <XCircle size={14} className="text-red-500 shrink-0" />
+                    ) : (
+                      <CheckCircle size={14} className="text-emerald-500 shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{d.project_name}</div>
+                      <div className="text-xs text-muted-foreground">{d.company_name}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', PLATFORM_COLOR[d.platform] ?? 'bg-gray-100 text-gray-600')}>
+                        {d.platform}
+                      </span>
+                      <span className={cn(
+                        'text-[10px] rounded-full px-2 py-0.5 font-medium capitalize',
+                        isFailed ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+                      )}>
+                        {d.status.replace(/_/g, ' ')}
+                      </span>
+                      <span className="text-xs text-muted-foreground hidden sm:block">
+                        {new Date(d.created_at).toLocaleDateString()}
+                      </span>
+                      {d.external_url ? (
+                        <a
+                          href={d.external_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open in platform"
+                        >
+                          <ExternalLink size={13} className="text-muted-foreground hover:text-blue-600 transition-colors" />
+                        </a>
+                      ) : (
+                        <Link href={`/dashboard/tickets/${d.ticket_id}`}>
+                          <ExternalLink size={13} className="text-muted-foreground hover:text-blue-600 transition-colors" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : deployed.length === 0 ? (
             <div className="px-5 py-8 text-center">
               <p className="text-sm text-muted-foreground">No deployments yet</p>
             </div>
           ) : (
+            // Fallback: tickets with DEPLOYED status
             <div className="divide-y">
               {deployed.map((t) => (
                 <div key={t.id} className="flex items-center gap-3 px-5 py-3 text-sm">

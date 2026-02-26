@@ -28,6 +28,8 @@ import {
   MessageSquare,
   Clock,
   Save,
+  Activity,
+  ExternalLink,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -119,6 +121,16 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   QUESTIONS_PENDING: ['BUILDING'],
 };
 
+// ── Activity event ────────────────────────────────────────────────────────────
+interface ActivityEvent {
+  id: string;
+  event_type?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  user_id?: string;
+}
+
 // ── Client health helpers ─────────────────────────────────────────────────────
 type HealthScore = 'healthy' | 'on_track' | 'at_risk' | 'overdue';
 
@@ -172,6 +184,7 @@ export default function DeliveryDetailPage() {
   const [artifacts, setArtifacts] = useState<TicketArtifact[]>([]);
   const [assets, setAssets] = useState<TicketAsset[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
@@ -180,16 +193,23 @@ export default function DeliveryDetailPage() {
 
   useEffect(() => {
     async function load() {
-      const [ticketRes, artifactsRes, assetsRes] = await Promise.all([
+      const [ticketRes, artifactsRes, assetsRes, eventsRes] = await Promise.all([
         supabase.from('tickets').select('*').eq('id', id).single(),
         supabase.from('ticket_artifacts').select('*').eq('ticket_id', id).order('created_at'),
         supabase.from('ticket_assets').select('*').eq('ticket_id', id).order('created_at'),
+        supabase
+          .from('activity_events')
+          .select('*')
+          .eq('entity_id', id)
+          .order('created_at', { ascending: false })
+          .limit(15),
       ]);
       const t = ticketRes.data as Ticket;
       setTicket(t);
       setNotes(t?.description ?? '');
       setArtifacts((artifactsRes.data as TicketArtifact[]) ?? []);
       setAssets((assetsRes.data as TicketAsset[]) ?? []);
+      setActivityEvents((eventsRes.data as ActivityEvent[]) ?? []);
       setLoading(false);
     }
     load();
@@ -321,6 +341,11 @@ export default function DeliveryDetailPage() {
             <span className={cn('text-xs px-3 py-1.5 rounded-full font-semibold border', statusConfig.className)}>
               {statusConfig.label}
             </span>
+            <Link href={`/dashboard/tickets/${ticket.id}`}>
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                <ExternalLink size={12} /> View Ticket
+              </Button>
+            </Link>
             {/* Status transition buttons */}
             {transitions.length > 0 && (
               <div className="flex gap-1.5">
@@ -535,6 +560,54 @@ export default function DeliveryDetailPage() {
                 </div>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Activity Timeline */}
+      {activityEvents.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3 pt-4">
+            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <Activity size={14} /> Activity Timeline
+              <span className="ml-auto font-normal normal-case text-xs bg-muted px-2 py-0.5 rounded-full">
+                {activityEvents.length} events
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-0">
+              {activityEvents.map((event, i) => (
+                <div key={event.id} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-2 h-2 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+                    {i < activityEvents.length - 1 && (
+                      <div className="w-px flex-1 bg-border mt-1 min-h-4" />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-3 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-semibold capitalize">
+                        {(event.event_type ?? 'event').replace(/_/g, ' ')}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
+                        {new Date(event.created_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                    {event.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                        {event.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
