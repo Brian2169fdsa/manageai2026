@@ -83,12 +83,13 @@ export const communicationTools: AgentTool[] = [
         }
       }
 
-      // Demo mode — no API key
-      console.log(`[tool:sendEmail] DEMO MODE — no RESEND_API_KEY`);
+      // Demo mode — no API key — return not_configured so the agent reports this clearly
+      console.log(`[tool:sendEmail] NOT CONFIGURED — no RESEND_API_KEY`);
       return {
-        success: true,
-        message: `[DEMO MODE] Would send email to ${to}: "${subject}"`,
-        demo_mode: true,
+        success: false,
+        not_configured: true,
+        message: `Email NOT sent — RESEND_API_KEY is not configured. Add this env var to enable real email delivery. Intended recipient: ${to}, subject: "${subject}". Go to Settings to check integration status.`,
+        action_taken: false,
         duration_ms: Date.now() - startTime,
       };
     },
@@ -135,15 +136,15 @@ export const communicationTools: AgentTool[] = [
         };
       }
 
-      // Demo mode — no SLACK_BOT_TOKEN
-      console.log(`[tool:sendSlackMessage] DEMO MODE — no SLACK_BOT_TOKEN`);
+      // Not configured — return not_configured so the agent reports this clearly
+      console.log(`[tool:sendSlackMessage] NOT CONFIGURED — no SLACK_BOT_TOKEN`);
       const duration_ms = Date.now() - start;
       return {
-        success: true,
-        message: `[DEMO MODE] Would send Slack message to ${channel}: "${message}"`,
-        demo_mode: true,
+        success: false,
+        not_configured: true,
+        message: `Slack message NOT sent — SLACK_BOT_TOKEN is not configured. Add this env var to enable real Slack messages. Intended channel: ${channel}, message: "${message.slice(0, 100)}". Go to Settings to check integration status.`,
+        action_taken: false,
         channel,
-        sent_at: new Date().toISOString(),
         duration_ms,
       };
     },
@@ -177,20 +178,18 @@ export const communicationTools: AgentTool[] = [
     },
     execute: async ({ title, date, attendees = [], description = '' }: any, _supabase: any) => {
       const start = Date.now();
-      console.log(`[tool:createCalendarEvent] Intent: title="${title}", date=${date}, attendees=${attendees.length}`);
-      const result = {
-        success: true,
-        event_id: `mock-event-${Date.now()}`,
+      console.log(`[tool:createCalendarEvent] NOT CONFIGURED — title="${title}", date=${date}`);
+      return {
+        success: false,
+        not_configured: true,
+        message: `Calendar event NOT created — calendar integration is not yet configured. To enable, add a Google Calendar or Microsoft Graph API key. Intended event: "${title}" on ${date} with ${attendees.length} attendee(s).`,
+        action_taken: false,
         title,
         date,
         attendees,
         description,
-        created_at: new Date().toISOString(),
-        note: 'Calendar event logged (calendar integration not yet configured)',
         duration_ms: Date.now() - start,
       };
-      console.log(`[tool:createCalendarEvent] Mock created in ${result.duration_ms}ms`);
-      return result;
     },
   },
 ];

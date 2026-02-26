@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { OpportunityAssessment } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, PlusCircle, FileBarChart2, CheckCircle2 } from 'lucide-react';
+import { Search, PlusCircle, FileBarChart2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const STATUS_BADGE: Record<string, string> = {
@@ -31,13 +31,23 @@ export default function OpportunitiesPage() {
   const [assessments, setAssessments] = useState<OpportunityAssessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [tableError, setTableError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
       .from('opportunity_assessments')
       .select('*')
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          const isMissing =
+            error.message?.includes('does not exist') ||
+            error.code === 'PGRST116' ||
+            (error as { code?: string }).code === '42P01';
+          if (isMissing) {
+            setTableError('missing');
+          }
+        }
         setAssessments((data as OpportunityAssessment[]) ?? []);
         setLoading(false);
       });
@@ -71,6 +81,35 @@ export default function OpportunitiesPage() {
           </Button>
         </Link>
       </div>
+
+      {/* Missing table banner */}
+      {tableError === 'missing' && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-amber-900">Database table not created yet</div>
+              <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                The <code className="font-mono bg-amber-100 px-1 rounded">opportunity_assessments</code> table
+                is missing from your Supabase database. Run the migration SQL to activate this feature.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a
+                  href="https://supabase.com/dashboard/project/kozfvbduvkpkvcastsah/sql/new"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold text-amber-800 underline hover:text-amber-900"
+                >
+                  Open Supabase SQL Editor →
+                </a>
+                <span className="text-xs text-amber-700">
+                  Paste <strong>apps/web/scripts/migrate-opportunity-assessments.sql</strong> and click Run
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">

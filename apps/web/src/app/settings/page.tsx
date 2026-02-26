@@ -4,9 +4,24 @@ import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Rocket, ChevronRight, CheckCircle2, AlertCircle,
-  Database, BarChart3, Loader2,
+  Database, BarChart3, Loader2, TableProperties,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+interface TableStatus {
+  name: string;
+  description: string;
+  exists: boolean;
+  error: string | null;
+}
+
+interface DbStatus {
+  total: number;
+  existing: number;
+  missing: number;
+  tables: TableStatus[];
+  all_ok: boolean;
+}
 
 interface IntegrationStatus {
   pipedrive: 'connected' | 'error' | 'checking';
@@ -89,6 +104,38 @@ export default function SettingsPage() {
     pipedrive: 'checking',
     templateCount: null,
   });
+  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
+  const [dbLoading, setDbLoading] = useState(true);
+  const [sqlCopied, setSqlCopied] = useState(false);
+
+  const MIGRATION_SQL = `-- Run in Supabase SQL Editor: https://supabase.com/dashboard/project/kozfvbduvkpkvcastsah/sql/new
+-- File: apps/web/scripts/migrate-opportunity-assessments.sql
+
+CREATE TABLE IF NOT EXISTS opportunity_assessments (
+  id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  pipedrive_deal_id   INTEGER,
+  company_name        TEXT        NOT NULL,
+  contact_name        TEXT        NOT NULL,
+  form_data           JSONB       NOT NULL DEFAULT '{}',
+  transcript          TEXT,
+  assessment          JSONB       NOT NULL DEFAULT '{}',
+  html_content        TEXT,
+  status              TEXT        NOT NULL DEFAULT 'draft'
+                                  CHECK (status IN ('draft', 'sent', 'converted')),
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE opportunity_assessments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "authenticated read"
+  ON opportunity_assessments FOR SELECT TO authenticated USING (true);`;
+
+  function copyMigrationSql() {
+    navigator.clipboard.writeText(MIGRATION_SQL).then(() => {
+      setSqlCopied(true);
+      setTimeout(() => setSqlCopied(false), 2000);
+    });
+  }
 
   useEffect(() => {
     // Test Pipedrive connectivity
@@ -106,6 +153,15 @@ export default function SettingsPage() {
         setStatus((prev) => ({ ...prev, templateCount: data?.total ?? null }))
       )
       .catch(() => {});
+
+    // Check DB table status
+    fetch('/api/admin/db-status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setDbStatus(data);
+        setDbLoading(false);
+      })
+      .catch(() => setDbLoading(false));
   }, []);
 
   return (
@@ -219,6 +275,103 @@ export default function SettingsPage() {
           <code className="bg-muted px-1 rounded text-[11px]">RESEND_API_KEY</code> to your
           environment variables to activate those integrations.
         </p>
+      </section>
+
+      {/* Database Tables */}
+      <section>
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          Database Tables
+        </h2>
+        <Card>
+          <CardContent className="pt-4 pb-4 px-5">
+            {dbLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 size={13} className="animate-spin" />
+                Checking tables…
+              </div>
+            ) : !dbStatus ? (
+              <p className="text-sm text-muted-foreground">Could not check table status</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <TableProperties size={15} className="text-muted-foreground" />
+                    {dbStatus.existing} / {dbStatus.total} tables exist
+                  </div>
+                  {dbStatus.all_ok ? (
+                    <span className="flex items-center gap-1 text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">
+                      <CheckCircle2 size={11} /> All tables ready
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
+                      <AlertCircle size={11} /> {dbStatus.missing} missing
+                    </span>
+                  )}
+                </div>
+
+                {/* Show missing tables */}
+                {dbStatus.missing > 0 && (
+                  <div className="space-y-2 border rounded-lg overflow-hidden">
+                    {dbStatus.tables.filter((t) => !t.exists).map((t) => (
+                      <div key={t.name} className="flex items-start gap-3 px-3 py-2 bg-amber-50 border-b last:border-b-0">
+                        <AlertCircle size={13} className="text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <code className="text-xs font-mono text-amber-900">{t.name}</code>
+                          <div className="text-xs text-amber-700">{t.description}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Migration SQL for missing tables */}
+                {dbStatus.missing > 0 && (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground font-medium">Migration SQL to run in Supabase SQL Editor:</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={copyMigrationSql}
+                          className="text-xs px-2.5 py-1 rounded-md border border-border bg-background hover:bg-muted transition-colors font-medium"
+                        >
+                          {sqlCopied ? '✓ Copied!' : 'Copy SQL'}
+                        </button>
+                        <a
+                          href="https://supabase.com/dashboard/project/kozfvbduvkpkvcastsah/sql/new"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs px-2.5 py-1 rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors font-medium"
+                        >
+                          Open SQL Editor →
+                        </a>
+                      </div>
+                    </div>
+                    <pre className="text-[10px] font-mono bg-muted rounded-lg p-3 overflow-x-auto leading-relaxed text-muted-foreground whitespace-pre-wrap border">
+{`-- Run: apps/web/scripts/migrate-opportunity-assessments.sql
+-- Also run: apps/web/scripts/migrate-new-tables.sql (for client_accounts etc.)
+CREATE TABLE IF NOT EXISTS opportunity_assessments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pipedrive_deal_id INTEGER,
+  company_name TEXT NOT NULL,
+  contact_name TEXT NOT NULL,
+  form_data JSONB NOT NULL DEFAULT '{}',
+  transcript TEXT,
+  assessment JSONB NOT NULL DEFAULT '{}',
+  html_content TEXT,
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'sent', 'converted')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE opportunity_assessments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "authenticated read"
+  ON opportunity_assessments FOR SELECT TO authenticated USING (true);`}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </section>
 
       {/* Platform info */}

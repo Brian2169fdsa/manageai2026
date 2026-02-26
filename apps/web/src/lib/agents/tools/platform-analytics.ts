@@ -44,6 +44,17 @@ export const platformAnalyticsTools: AgentTool[] = [
         if (t.ticket_type in byPlatform) byPlatform[t.ticket_type as keyof typeof byPlatform]++;
       }
 
+      // Compute real avg build time from completed tickets (created_at → updated_at)
+      const completedTickets = tickets.filter((t: any) => ['DEPLOYED', 'CLOSED'].includes(t.status));
+      let avgBuildTimeDays: number | null = null;
+      if (completedTickets.length > 0) {
+        const totalMs = completedTickets.reduce((sum: number, t: any) => {
+          const end = t.updated_at ? new Date(t.updated_at) : new Date();
+          return sum + (end.getTime() - new Date(t.created_at).getTime());
+        }, 0);
+        avgBuildTimeDays = Math.round((totalMs / completedTickets.length / 86400000) * 10) / 10;
+      }
+
       console.log(`[tool:getPlatformMetrics] Computed metrics for ${total} tickets in ${Date.now() - start}ms`);
       return {
         timeframe,
@@ -51,7 +62,8 @@ export const platformAnalyticsTools: AgentTool[] = [
         completed,
         in_progress: inProgress,
         completion_rate_pct: completionRate,
-        avg_build_time_days: 3.2,
+        avg_build_time_days: avgBuildTimeDays,
+        avg_build_time_note: avgBuildTimeDays === null ? 'No completed tickets yet' : `Based on ${completedTickets.length} completed tickets`,
         by_platform: byPlatform,
       };
     },

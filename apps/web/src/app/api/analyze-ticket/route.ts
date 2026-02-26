@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, analysisCompleteHtml } from '@/lib/email/notifications';
-import { PDFParse } from 'pdf-parse';
 
 // Allow up to 5 minutes for AI analysis
 export const maxDuration = 300;
@@ -56,6 +55,8 @@ async function extractFileText(filePath: string, mimeType?: string | null): Prom
 
     if (isPdf) {
       const uint8Array = new Uint8Array(await (data as Blob).arrayBuffer());
+      // Dynamic import avoids Next.js static-analysis issues with heavy PDF libraries
+      const { PDFParse } = await import('pdf-parse');
       const parser = new PDFParse({ data: uint8Array });
       const textResult = await parser.getText();
       await parser.destroy();
