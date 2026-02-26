@@ -12,7 +12,7 @@ import {
 import {
   Search, Package, Clock, CheckCircle2, AlertCircle, BarChart3,
   Calendar, Building2, ChevronRight, Share2, AlertTriangle, Activity,
-  Rocket, ExternalLink, XCircle,
+  Rocket, ExternalLink, XCircle, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -212,6 +212,36 @@ export default function DeliveryPage() {
     [tickets]
   );
 
+  // Client health overview: group tickets by company_name
+  const clientHealth = useMemo(() => {
+    const SEVERITY: Record<HealthScore, number> = { healthy: 0, on_track: 1, at_risk: 2, overdue: 3 };
+    const map = new Map<string, {
+      company: string;
+      total: number;
+      active: number;
+      delivered: number;
+      worstHealth: HealthScore;
+      lastActivity: string;
+    }>();
+    for (const t of tickets) {
+      const entry = map.get(t.company_name) ?? {
+        company: t.company_name,
+        total: 0, active: 0, delivered: 0,
+        worstHealth: 'healthy' as HealthScore,
+        lastActivity: t.updated_at,
+      };
+      entry.total++;
+      if (['SUBMITTED','CONTEXT_PENDING','ANALYZING','QUESTIONS_PENDING','BUILDING','REVIEW_PENDING'].includes(t.status)) entry.active++;
+      if (['APPROVED','DEPLOYED','CLOSED'].includes(t.status)) entry.delivered++;
+      if ((SEVERITY[t.health] ?? 0) > (SEVERITY[entry.worstHealth] ?? 0)) entry.worstHealth = t.health;
+      if (t.updated_at > entry.lastActivity) entry.lastActivity = t.updated_at;
+      map.set(t.company_name, entry);
+    }
+    return [...map.values()]
+      .sort((a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime())
+      .slice(0, 8);
+  }, [tickets]);
+
   const filtered = useMemo(() => {
     return tickets.filter((t) => {
       const matchesSearch =
@@ -280,6 +310,55 @@ export default function DeliveryPage() {
           bg={stats.atRisk > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50'}
         />
       </div>
+
+      {/* Client Health Overview */}
+      {!loading && clientHealth.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Users size={14} className="text-muted-foreground" />
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Client Health Overview
+            </h2>
+            <span className="text-xs text-muted-foreground ml-auto">{clientHealth.length} active clients</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {clientHealth.map(({ company, total, active, delivered, worstHealth, lastActivity }) => {
+              const health = HEALTH_CONFIG[worstHealth];
+              return (
+                <button
+                  key={company}
+                  onClick={() => {
+                    setSearch(company);
+                    setStatusFilter('all');
+                  }}
+                  className="text-left border rounded-xl bg-white hover:shadow-sm hover:border-blue-200 transition-all p-4 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-sm font-semibold leading-snug line-clamp-2">{company}</div>
+                    <span className={cn('w-2 h-2 rounded-full shrink-0 mt-1', health.dot)} />
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Clock size={10} /> {active} active
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 size={10} /> {delivered} done
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', health.badge)}>
+                      {health.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {new Date(lastActivity).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Pipeline chart + Needs Attention */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

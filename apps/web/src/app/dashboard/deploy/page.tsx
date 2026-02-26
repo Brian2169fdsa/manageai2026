@@ -7,8 +7,9 @@ import { supabase } from '@/lib/supabase/client';
 import { Ticket } from '@/types';
 import {
   Rocket, CheckCircle, XCircle, Clock, Package,
-  ExternalLink, Sparkles,
+  ExternalLink, Sparkles, Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,38 @@ export default function DeployPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [deploymentRecords, setDeploymentRecords] = useState<DeploymentRecord[]>([]);
+  const [deployingIds, setDeployingIds] = useState<Set<string>>(new Set());
+
+  async function handleDeploy(ticketId: string) {
+    setDeployingIds((prev) => new Set(prev).add(ticketId));
+    try {
+      const res = await fetch('/api/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_id: ticketId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Deploy failed');
+      } else if (data.status === 'manual_guide_generated') {
+        toast.success('Zapier setup guide generated — check Deliverables');
+        setTickets((prev) => prev.map((t) => t.id === ticketId ? { ...t, status: 'DEPLOYED' } : t));
+      } else if (data.success) {
+        toast.success(`Deployed to ${data.platform}!`);
+        setTickets((prev) => prev.map((t) => t.id === ticketId ? { ...t, status: 'DEPLOYED' } : t));
+      } else {
+        toast.error(data.error || 'Deploy failed — check logs');
+      }
+    } catch {
+      toast.error('Deploy request failed');
+    } finally {
+      setDeployingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(ticketId);
+        return next;
+      });
+    }
+  }
 
   useEffect(() => {
     supabase
@@ -225,10 +258,13 @@ export default function DeployPage() {
                     <Button
                       size="sm"
                       className="gap-1 h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                      disabled
-                      title="One-click deploy coming soon"
+                      onClick={() => handleDeploy(t.id)}
+                      disabled={deployingIds.has(t.id)}
                     >
-                      <Rocket size={11} /> Deploy
+                      {deployingIds.has(t.id)
+                        ? <Loader2 size={11} className="animate-spin" />
+                        : <Rocket size={11} />}
+                      {deployingIds.has(t.id) ? 'Deploying…' : 'Deploy'}
                     </Button>
                   </div>
                 </div>
@@ -269,27 +305,30 @@ export default function DeployPage() {
           </CardContent>
         </Card>
 
-        {/* One-click deploy placeholder */}
-        <Card className="border-blue-100 bg-gradient-to-br from-blue-50/50 to-white">
+        {/* One-click deploy — live */}
+        <Card className="border-emerald-100 bg-gradient-to-br from-emerald-50/40 to-white">
           <CardContent className="pt-5 pb-5 px-5 h-full flex flex-col justify-center">
             <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-blue-100">
-                <Rocket size={16} className="text-blue-600" />
+              <div className="p-2 rounded-lg bg-emerald-100">
+                <Rocket size={16} className="text-emerald-600" />
               </div>
               <span className="font-semibold text-sm">One-Click Deploy</span>
-              <Badge variant="outline" className="text-[9px] ml-auto border-blue-200 text-blue-600">
-                <Sparkles size={8} className="mr-1" /> Coming Soon
+              <Badge variant="outline" className="text-[9px] ml-auto border-emerald-200 text-emerald-700">
+                <Sparkles size={8} className="mr-1" /> Live
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-              Deploy directly to your n8n instance, Make.com account, or Zapier — without leaving ManageAI.
-              One click to push workflow JSON live.
+              Deploy approved tickets directly to your n8n instance, Make.com account, or Zapier via the Deploy button in the queue above. Workflow JSON is pushed live instantly.
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {['n8n', 'Make.com', 'Zapier'].map((p) => (
-                <div key={p} className="text-center rounded-lg border border-blue-100 bg-white py-2 px-1">
-                  <div className="text-xs font-semibold text-blue-700">{p}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">API push</div>
+              {[
+                { name: 'n8n', note: 'API push' },
+                { name: 'Make.com', note: 'API push' },
+                { name: 'Zapier', note: 'Setup guide' },
+              ].map(({ name, note }) => (
+                <div key={name} className="text-center rounded-lg border border-emerald-100 bg-white py-2 px-1">
+                  <div className="text-xs font-semibold text-emerald-700">{name}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{note}</div>
                 </div>
               ))}
             </div>

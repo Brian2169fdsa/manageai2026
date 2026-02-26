@@ -21,6 +21,9 @@ import {
   DollarSign,
   Zap,
   Send,
+  FileText,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -70,6 +73,9 @@ export default function OpportunityDetailPage() {
   const [assessment, setAssessment] = useState<OpportunityAssessment | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [generatingBlueprint, setGeneratingBlueprint] = useState(false);
+  const [blueprintContent, setBlueprintContent] = useState<string | null>(null);
+  const [showBlueprint, setShowBlueprint] = useState(false);
 
   useEffect(() => {
     supabase
@@ -78,10 +84,38 @@ export default function OpportunityDetailPage() {
       .eq('id', id)
       .single()
       .then(({ data }) => {
-        setAssessment(data as OpportunityAssessment);
+        const a = data as OpportunityAssessment;
+        setAssessment(a);
+        if (a?.blueprint_content) {
+          setBlueprintContent(a.blueprint_content);
+        }
         setLoading(false);
       });
   }, [id]);
+
+  async function handleGenerateBlueprint() {
+    if (!assessment) return;
+    setGeneratingBlueprint(true);
+    try {
+      const res = await fetch('/api/blueprint/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assessment_id: assessment.id }),
+      });
+      const data = await res.json();
+      if (!res.ok && res.status !== 207) {
+        toast.error(data.error || 'Blueprint generation failed');
+        return;
+      }
+      setBlueprintContent(data.html);
+      setShowBlueprint(true);
+      toast.success('AI Blueprint generated!');
+    } catch {
+      toast.error('Blueprint generation failed');
+    } finally {
+      setGeneratingBlueprint(false);
+    }
+  }
 
   function handleCopyShareLink() {
     const url = `${window.location.origin}/share/assessment/${id}`;
@@ -206,6 +240,26 @@ export default function OpportunityDetailPage() {
         </Button>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={handlePrint}>
           <Download size={13} /> Download PDF
+        </Button>
+        <Button
+          size="sm"
+          className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
+          onClick={blueprintContent ? () => setShowBlueprint((v) => !v) : handleGenerateBlueprint}
+          disabled={generatingBlueprint}
+        >
+          {generatingBlueprint ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <FileText size={12} />
+          )}
+          {generatingBlueprint
+            ? 'Generating Blueprint…'
+            : blueprintContent
+            ? showBlueprint ? 'Hide Blueprint' : 'View Blueprint'
+            : 'Generate Blueprint'}
+          {blueprintContent && !generatingBlueprint && (
+            showBlueprint ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+          )}
         </Button>
         {assessment.status === 'draft' && (
           <Button
@@ -394,6 +448,59 @@ export default function OpportunityDetailPage() {
           <CardContent className="py-12 text-center text-muted-foreground">
             <AlertCircle size={32} className="mx-auto mb-2 opacity-30" />
             <p className="text-sm">Assessment document not available</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Blueprint Panel */}
+      {blueprintContent && showBlueprint && (
+        <Card>
+          <CardHeader className="pb-3 pt-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <FileText size={14} className="text-indigo-600" />
+                AI Blueprint
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Full implementation plan</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => {
+                    const iframe = document.getElementById('blueprint-frame') as HTMLIFrameElement;
+                    if (iframe?.contentWindow) {
+                      iframe.contentWindow.focus();
+                      iframe.contentWindow.print();
+                    }
+                  }}
+                >
+                  <Download size={11} /> Print
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                  onClick={handleGenerateBlueprint}
+                  disabled={generatingBlueprint}
+                >
+                  {generatingBlueprint ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />}
+                  Regenerate
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0 pb-0 rounded-b-xl overflow-hidden">
+            <div className="border-t">
+              <iframe
+                id="blueprint-frame"
+                srcDoc={blueprintContent}
+                title="AI Blueprint"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups"
+                className="w-full border-none"
+                style={{ height: '900px', display: 'block' }}
+              />
+            </div>
           </CardContent>
         </Card>
       )}

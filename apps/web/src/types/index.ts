@@ -131,6 +131,7 @@ export interface OpportunityAssessment {
   transcript?: string | null;
   assessment: { metrics?: AssessmentMetrics };
   html_content?: string | null;
+  blueprint_content?: string | null;
   status: 'draft' | 'sent' | 'converted';
   created_at: string;
 }
