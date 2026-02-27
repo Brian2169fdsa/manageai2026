@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import {
   Building2, User, Mail, Calendar, Tag, Cpu,
   Download, Eye, FileText, Link2, ArrowLeft, Loader2,
-  CheckCircle, AlertCircle, Package, Share2, ThumbsUp, ThumbsDown, RotateCcw,
+  CheckCircle, AlertCircle, Package, Share2, ThumbsUp, ThumbsDown, RotateCcw, Rocket,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -52,6 +52,7 @@ export default function TicketDetailPage() {
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | 'request_revision' | null>(null);
   const [approvalComments, setApprovalComments] = useState('');
   const [approvalLoading, setApprovalLoading] = useState(false);
+  const [deployLoading, setDeployLoading] = useState(false);
 
   function handleCopyShareLink(type: 'demo' | 'plan') {
     const url = `${window.location.origin}/share/${id}/${type}`;
@@ -152,6 +153,33 @@ export default function TicketDetailPage() {
       toast.error('Failed to process approval action');
     } finally {
       setApprovalLoading(false);
+    }
+  }
+
+  async function handleDeploy() {
+    if (!ticket) return;
+    setDeployLoading(true);
+    try {
+      const res = await fetch('/api/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_id: ticket.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Deployment failed');
+        return;
+      }
+      if (ticket.ticket_type === 'zapier') {
+        toast.success('Zapier setup guide generated! Download it from the Deliverables section.');
+      } else {
+        toast.success(`Deployed to ${ticket.ticket_type.toUpperCase()} successfully!`);
+      }
+      setTicket((prev) => prev ? { ...prev, status: data.status === 'deployed' ? 'DEPLOYED' : prev.status } : prev);
+    } catch {
+      toast.error('Deployment request failed');
+    } finally {
+      setDeployLoading(false);
     }
   }
 
@@ -434,6 +462,43 @@ export default function TicketDetailPage() {
                 </Button>
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Deploy Action — shown when ticket is APPROVED and not yet deployed */}
+      {ticket.status === 'APPROVED' && (
+        <Card className="border-emerald-200 bg-emerald-50/30">
+          <CardHeader className="pb-3 pt-4">
+            <CardTitle className="text-sm font-semibold text-emerald-900 flex items-center gap-2">
+              <Rocket size={14} className="text-emerald-600" />
+              Ready to Deploy
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-emerald-800">
+              This build has been approved.
+              {ticket.ticket_type === 'zapier'
+                ? ' Click below to generate your Zapier setup guide — Zapier does not support API-based deployment, so you will set it up manually using the guide.'
+                : ` Click below to push the workflow JSON directly to your ${ticket.ticket_type.toUpperCase()} instance. Make sure your deploy credentials are configured in Settings → Deploy.`}
+            </p>
+            <Button
+              size="sm"
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleDeploy}
+              disabled={deployLoading}
+            >
+              {deployLoading ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Rocket size={13} />
+              )}
+              {deployLoading
+                ? 'Deploying...'
+                : ticket.ticket_type === 'zapier'
+                ? 'Generate Setup Guide'
+                : `Deploy to ${ticket.ticket_type.toUpperCase()}`}
+            </Button>
           </CardContent>
         </Card>
       )}

@@ -193,15 +193,20 @@ export async function POST(req: NextRequest) {
         .update({ status: 'DEPLOYED', updated_at: new Date().toISOString() })
         .eq('id', ticket_id);
 
-      // Log activity (best-effort)
+      // Log activity (best-effort) — columns match activity_events schema
       void Promise.resolve(
         supabase.from('activity_events').insert({
           ticket_id,
-          event_type: 'deployed',
-          payload: {
+          event_type: 'ticket.deployed',
+          event_message: JSON.stringify({
             platform,
             external_url: (deployResult as { url?: string }).url ?? null,
             deploy_type: (deployResult as { type?: string }).type ?? 'api',
+          }),
+          agent_name: 'system',
+          metadata: {
+            platform,
+            external_url: (deployResult as { url?: string }).url ?? null,
           },
           created_at: new Date().toISOString(),
         })

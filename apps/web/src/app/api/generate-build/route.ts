@@ -202,26 +202,71 @@ export async function POST(req: NextRequest) {
   console.log('[generate-build] Context length:', context.length, 'chars');
 
   // ── 4. Template matching ─────────────────────────────────────────────────
+  // Extract meaningful keywords from the ticket to find relevant templates.
   console.log('[generate-build] Fetching matching templates from library...');
-  const { data: matchingTemplates } = await supabase
-    .from('templates')
-    .select('name, description, category, tags')
-    .eq('platform', ticket.ticket_type)
-    .limit(8);
 
-  const templateMatchContext = matchingTemplates?.length
-    ? `\n\nEXISTING TEMPLATE LIBRARY — Review these templates for the ${ticket.ticket_type} platform. If one closely matches the requirements, use it as a starting point and customize it. If none match well, generate from scratch:\n${matchingTemplates.map((t) => `- "${t.name}" [${t.category}]: ${t.description}`).join('\n')}`
-    : '';
+  const STOP_WORDS = new Set(['with', 'from', 'that', 'this', 'when', 'then', 'will', 'have', 'send', 'into', 'each', 'form', 'data', 'user', 'your', 'they', 'them', 'their', 'make', 'need', 'want', 'should']);
+  const keywords = (ticket.what_to_build ?? '')
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w: string) => w.length >= 4 && !STOP_WORDS.has(w))
+    .slice(0, 4);
 
-  const matchedTemplateName = matchingTemplates?.find((t) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let matchingTemplates: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let bestMatchTemplate: any | null = null;
+
+  if (keywords.length > 0) {
+    const orFilter = keywords
+      .map((kw: string) => `description.ilike.%${kw}%,name.ilike.%${kw}%`)
+      .join(',');
+    const { data: keywordMatches } = await supabase
+      .from('templates')
+      .select('name, description, category, tags, workflow_json')
+      .eq('platform', ticket.ticket_type)
+      .or(orFilter)
+      .limit(5);
+    if (keywordMatches && keywordMatches.length > 0) {
+      matchingTemplates = keywordMatches;
+      bestMatchTemplate = keywordMatches[0];
+    }
+  }
+
+  // Fall back to unfiltered first-8 if no keyword matches
+  if (matchingTemplates.length === 0) {
+    const { data: fallbackTemplates } = await supabase
+      .from('templates')
+      .select('name, description, category, tags')
+      .eq('platform', ticket.ticket_type)
+      .limit(8);
+    matchingTemplates = fallbackTemplates ?? [];
+  }
+
+  // Build the template context string for Claude.
+  // If we found a keyword-matched template with workflow_json, include its
+  // structure (capped to ~3000 chars) so Claude can adapt it.
+  let templateMatchContext = '';
+  if (matchingTemplates.length > 0) {
+    const templateList = matchingTemplates
+      .map((t) => `- "${t.name}" [${t.category}]: ${t.description}`)
+      .join('\n');
+    templateMatchContext = `\n\nEXISTING TEMPLATE LIBRARY — Review these templates for the ${ticket.ticket_type} platform. If one closely matches the requirements, use it as a starting point and customize it. If none match well, generate from scratch:\n${templateList}`;
+
+    if (bestMatchTemplate?.workflow_json) {
+      const wfJsonStr = JSON.stringify(bestMatchTemplate.workflow_json);
+      templateMatchContext += `\n\nBEST-MATCH TEMPLATE JSON (adapt this structure — do not copy verbatim):\n${wfJsonStr.slice(0, 3000)}${wfJsonStr.length > 3000 ? '\n...(truncated)' : ''}`;
+    }
+  }
+
+  const matchedTemplateName = bestMatchTemplate?.name ?? matchingTemplates.find((t) => {
     const what = (ticket.what_to_build || '').toLowerCase();
     const name = t.name.toLowerCase();
     const desc = (t.description || '').toLowerCase();
-    // Very basic similarity check — Claude will do the real matching
     return what.includes(name.split(' ')[0]) || desc.split(' ').some((w: string) => w.length > 5 && what.includes(w));
-  })?.name;
+  })?.name ?? null;
 
-  console.log('[generate-build] Found', matchingTemplates?.length ?? 0, 'platform templates. Best match:', matchedTemplateName ?? 'none');
+  console.log('[generate-build] Found', matchingTemplates.length, 'platform templates. Best match:', matchedTemplateName ?? 'none');
 
   // ── 5. n8n-MCP: Look up node configs (n8n only) ──────────────────────────
   let mcpNodeContext = '';
