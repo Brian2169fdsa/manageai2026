@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
     'sql.js',
     '@modelcontextprotocol/sdk',
     'better-sqlite3',
+    // pdf-parse v2 depends on @napi-rs/canvas (native binary) and pdfjs-dist
+    // worker — both must be loaded from node_modules at runtime, not bundled
+    'pdf-parse',
+    'pdfjs-dist',
+    '@napi-rs/canvas',
   ],
 };
 
