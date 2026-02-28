@@ -7,7 +7,10 @@ import { NextResponse } from 'next/server';
  */
 export async function GET() {
   return NextResponse.json({
-    slack:  !!process.env.SLACK_BOT_TOKEN,
-    resend: !!process.env.RESEND_API_KEY,
+    slack:     !!process.env.SLACK_BOT_TOKEN,
+    resend:    !!process.env.RESEND_API_KEY,
+    pipedrive: !!process.env.PIPEDRIVE_API_TOKEN,
+    anthropic: !!process.env.ANTHROPIC_API_KEY,
+    supabase:  !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
   });
 }

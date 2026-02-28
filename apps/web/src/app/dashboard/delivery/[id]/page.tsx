@@ -709,9 +709,9 @@ export default function DeliveryDetailPage() {
                             size="sm"
                             variant="outline"
                             className="w-full gap-1 text-xs h-8 bg-white/80 hover:bg-white text-blue-600 border-blue-200"
-                            onClick={() => toast.info('n8n direct deploy coming soon')}
+                            onClick={() => router.push(`/dashboard/tickets/${ticket.id}`)}
                           >
-                            ⚡ Deploy to n8n (soon)
+                            ⚡ Deploy via Ticket
                           </Button>
                         )}
                       </div>

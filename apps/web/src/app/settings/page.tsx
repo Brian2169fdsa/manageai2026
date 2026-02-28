@@ -25,6 +25,8 @@ interface DbStatus {
 
 interface IntegrationStatus {
   pipedrive: 'connected' | 'error' | 'checking';
+  slack: 'connected' | 'setup_required' | 'checking';
+  resend: 'connected' | 'setup_required' | 'checking';
   templateCount: number | null;
 }
 
@@ -55,14 +57,14 @@ const INTEGRATIONS = [
     name: 'Slack',
     description: 'Team notifications — add SLACK_BOT_TOKEN to enable',
     icon: '💬',
-    status: 'setup_required' as const,
+    status: 'dynamic_slack' as const,
   },
   {
     key: 'resend',
     name: 'Resend',
     description: 'Email delivery — add RESEND_API_KEY to enable',
     icon: '✉️',
-    status: 'setup_required' as const,
+    status: 'dynamic_resend' as const,
   },
 ];
 
@@ -102,6 +104,8 @@ const CONFIG_SECTIONS = [
 export default function SettingsPage() {
   const [status, setStatus] = useState<IntegrationStatus>({
     pipedrive: 'checking',
+    slack: 'checking',
+    resend: 'checking',
     templateCount: null,
   });
   const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
@@ -109,26 +113,26 @@ export default function SettingsPage() {
   const [sqlCopied, setSqlCopied] = useState(false);
 
   const MIGRATION_SQL = `-- Run in Supabase SQL Editor: https://supabase.com/dashboard/project/kozfvbduvkpkvcastsah/sql/new
--- File: apps/web/scripts/migrate-opportunity-assessments.sql
+-- Files: scripts/migrate-opportunity-assessments.sql + scripts/migrate-new-tables.sql
 
 CREATE TABLE IF NOT EXISTS opportunity_assessments (
-  id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  pipedrive_deal_id   INTEGER,
-  company_name        TEXT        NOT NULL,
-  contact_name        TEXT        NOT NULL,
-  form_data           JSONB       NOT NULL DEFAULT '{}',
-  transcript          TEXT,
-  assessment          JSONB       NOT NULL DEFAULT '{}',
-  html_content        TEXT,
-  status              TEXT        NOT NULL DEFAULT 'draft'
-                                  CHECK (status IN ('draft', 'sent', 'converted')),
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pipedrive_deal_id INTEGER,
+  company_name      TEXT NOT NULL,
+  contact_name      TEXT NOT NULL,
+  form_data         JSONB NOT NULL DEFAULT '{}',
+  transcript        TEXT,
+  assessment        JSONB NOT NULL DEFAULT '{}',
+  html_content      TEXT,
+  blueprint_content TEXT,
+  status            TEXT NOT NULL DEFAULT 'draft'
+                    CHECK (status IN ('draft','sent','converted')),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
+ALTER TABLE opportunity_assessments ADD COLUMN IF NOT EXISTS blueprint_content TEXT;
 ALTER TABLE opportunity_assessments ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY IF NOT EXISTS "authenticated read"
-  ON opportunity_assessments FOR SELECT TO authenticated USING (true);`;
+DROP POLICY IF EXISTS "authenticated read" ON opportunity_assessments;
+CREATE POLICY "authenticated read" ON opportunity_assessments FOR SELECT TO authenticated USING (true);`;
 
   function copyMigrationSql() {
     navigator.clipboard.writeText(MIGRATION_SQL).then(() => {
@@ -144,6 +148,20 @@ CREATE POLICY IF NOT EXISTS "authenticated read"
       .catch(() => 'error' as const)
       .then((s) =>
         setStatus((prev) => ({ ...prev, pipedrive: s as 'connected' | 'error' }))
+      );
+
+    // Check Slack + Resend config status
+    fetch('/api/config/status')
+      .then((r) => r.json())
+      .then((data) =>
+        setStatus((prev) => ({
+          ...prev,
+          slack: data?.slack ? 'connected' : 'setup_required',
+          resend: data?.resend ? 'connected' : 'setup_required',
+        }))
+      )
+      .catch(() =>
+        setStatus((prev) => ({ ...prev, slack: 'setup_required', resend: 'setup_required' }))
       );
 
     // Get template count
@@ -229,6 +247,10 @@ CREATE POLICY IF NOT EXISTS "authenticated read"
                 const resolvedStatus =
                   integration.status === 'dynamic'
                     ? status.pipedrive
+                    : integration.status === 'dynamic_slack'
+                    ? status.slack
+                    : integration.status === 'dynamic_resend'
+                    ? status.resend
                     : integration.status;
 
                 return (
@@ -347,24 +369,23 @@ CREATE POLICY IF NOT EXISTS "authenticated read"
                       </div>
                     </div>
                     <pre className="text-[10px] font-mono bg-muted rounded-lg p-3 overflow-x-auto leading-relaxed text-muted-foreground whitespace-pre-wrap border">
-{`-- Run: apps/web/scripts/migrate-opportunity-assessments.sql
--- Also run: apps/web/scripts/migrate-new-tables.sql (for client_accounts etc.)
+{`-- Run: scripts/migrate-opportunity-assessments.sql
+-- Then: scripts/migrate-new-tables.sql (client_accounts, etc.)
 CREATE TABLE IF NOT EXISTS opportunity_assessments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  pipedrive_deal_id INTEGER,
-  company_name TEXT NOT NULL,
-  contact_name TEXT NOT NULL,
-  form_data JSONB NOT NULL DEFAULT '{}',
-  transcript TEXT,
+  company_name TEXT NOT NULL, contact_name TEXT NOT NULL,
+  form_data JSONB NOT NULL DEFAULT '{}', transcript TEXT,
   assessment JSONB NOT NULL DEFAULT '{}',
-  html_content TEXT,
+  html_content TEXT, blueprint_content TEXT,
   status TEXT NOT NULL DEFAULT 'draft'
-    CHECK (status IN ('draft', 'sent', 'converted')),
+    CHECK (status IN ('draft','sent','converted')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE opportunity_assessments ADD COLUMN IF NOT EXISTS blueprint_content TEXT;
 ALTER TABLE opportunity_assessments ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "authenticated read"
-  ON opportunity_assessments FOR SELECT TO authenticated USING (true);`}
+DROP POLICY IF EXISTS "authenticated read" ON opportunity_assessments;
+CREATE POLICY "authenticated read" ON opportunity_assessments
+  FOR SELECT TO authenticated USING (true);`}
                     </pre>
                   </div>
                 )}
