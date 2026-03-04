@@ -152,7 +152,8 @@ export const communicationTools: AgentTool[] = [
 
   {
     name: 'createCalendarEvent',
-    description: 'Create a calendar event. Currently logs the intent and returns a mock confirmation.',
+    description:
+      'Create a Google Calendar event. If GOOGLE_CALENDAR_API_KEY and GOOGLE_CALENDAR_ID are configured, the event is created via the Google Calendar API. Otherwise logs the intent.',
     input_schema: {
       type: 'object',
       properties: {
@@ -162,7 +163,11 @@ export const communicationTools: AgentTool[] = [
         },
         date: {
           type: 'string',
-          description: 'Event date and time in ISO 8601 format',
+          description: 'Event start date/time in ISO 8601 format (e.g. 2026-03-15T10:00:00-07:00)',
+        },
+        duration_minutes: {
+          type: 'number',
+          description: 'Duration in minutes (default 60)',
         },
         attendees: {
           type: 'array',
@@ -173,16 +178,87 @@ export const communicationTools: AgentTool[] = [
           type: 'string',
           description: 'Optional event description or agenda',
         },
+        location: {
+          type: 'string',
+          description: 'Optional meeting location or video call link',
+        },
       },
       required: ['title', 'date'],
     },
-    execute: async ({ title, date, attendees = [], description = '' }: any, _supabase: any) => {
+    execute: async (
+      { title, date, duration_minutes = 60, attendees = [], description = '', location = '' }: any,
+      _supabase: any
+    ) => {
       const start = Date.now();
-      console.log(`[tool:createCalendarEvent] NOT CONFIGURED — title="${title}", date=${date}`);
+      console.log(`[tool:createCalendarEvent] title="${title}", date=${date}, attendees=${attendees.length}`);
+
+      const apiKey = process.env.GOOGLE_CALENDAR_API_KEY;
+      const calendarId = process.env.GOOGLE_CALENDAR_ID;
+      const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+
+      if (serviceAccountKey && calendarId) {
+        // Full service-account OAuth flow for write access
+        try {
+          const keyData = JSON.parse(serviceAccountKey);
+          const jwt = await createGoogleJWT(keyData);
+          const accessToken = await exchangeJWTForToken(jwt);
+
+          const startTime = new Date(date);
+          const endTime = new Date(startTime.getTime() + duration_minutes * 60 * 1000);
+
+          const event = {
+            summary: title,
+            description,
+            location,
+            start: { dateTime: startTime.toISOString(), timeZone: 'America/Phoenix' },
+            end: { dateTime: endTime.toISOString(), timeZone: 'America/Phoenix' },
+            attendees: attendees.map((email: string) => ({ email })),
+            reminders: { useDefault: true },
+          };
+
+          const res = await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=all`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(event),
+            }
+          );
+
+          if (!res.ok) {
+            const errText = await res.text();
+            console.error(`[tool:createCalendarEvent] Google API error: ${res.status} ${errText}`);
+            return {
+              success: false,
+              error: `Google Calendar API error (${res.status}): ${errText}`,
+              duration_ms: Date.now() - start,
+            };
+          }
+
+          const created = await res.json();
+          console.log(`[tool:createCalendarEvent] Created event ${created.id} in ${Date.now() - start}ms`);
+          return {
+            success: true,
+            event_id: created.id,
+            html_link: created.htmlLink,
+            message: `Calendar event "${title}" created for ${startTime.toLocaleString()} with ${attendees.length} attendee(s)`,
+            duration_ms: Date.now() - start,
+          };
+        } catch (err: any) {
+          console.error('[tool:createCalendarEvent] Exception:', err.message);
+          return { success: false, error: err.message, duration_ms: Date.now() - start };
+        }
+      }
+
+      // Not configured
+      console.log(`[tool:createCalendarEvent] NOT CONFIGURED — no GOOGLE_SERVICE_ACCOUNT_KEY`);
       return {
         success: false,
         not_configured: true,
-        message: `Calendar event NOT created — calendar integration is not yet configured. To enable, add a Google Calendar or Microsoft Graph API key. Intended event: "${title}" on ${date} with ${attendees.length} attendee(s).`,
+        message: `Calendar event NOT created — Google Calendar integration is not configured. Add GOOGLE_SERVICE_ACCOUNT_KEY and GOOGLE_CALENDAR_ID to environment variables. Intended event: "${title}" on ${date} with ${attendees.length} attendee(s).`,
         action_taken: false,
         title,
         date,
@@ -193,3 +269,45 @@ export const communicationTools: AgentTool[] = [
     },
   },
 ];
+
+// ── Google Calendar JWT helpers ─────────────────────────────────────────────
+
+async function createGoogleJWT(keyData: { client_email: string; private_key: string }): Promise<string> {
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const claim = {
+    iss: keyData.client_email,
+    scope: 'https://www.googleapis.com/auth/calendar',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  };
+
+  const enc = (obj: object) =>
+    Buffer.from(JSON.stringify(obj)).toString('base64url');
+
+  const unsignedToken = `${enc(header)}.${enc(claim)}`;
+
+  // Import the RSA private key and sign
+  const crypto = await import('crypto');
+  const sign = crypto.createSign('RSA-SHA256');
+  sign.update(unsignedToken);
+  const signature = sign.sign(keyData.private_key, 'base64url');
+
+  return `${unsignedToken}.${signature}`;
+}
+
+async function exchangeJWTForToken(jwt: string): Promise<string> {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Google OAuth error: ${res.status} ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  return data.access_token;
+}

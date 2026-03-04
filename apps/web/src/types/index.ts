@@ -135,3 +135,83 @@ export interface OpportunityAssessment {
   status: 'draft' | 'sent' | 'converted';
   created_at: string;
 }
+
+// ── Client Accounts ─────────────────────────────────────────────────────────
+
+export type ClientStatus = 'prospect' | 'active' | 'at_risk' | 'churned';
+export type ClientPlan = 'strategy' | 'build' | 'management' | 'enterprise';
+
+export interface ClientAccount {
+  id: string;
+  org_id?: string | null;
+  company_name: string;
+  pipedrive_deal_id?: number | null;
+  status: ClientStatus;
+  plan?: ClientPlan | null;
+  health_score: number;
+  assigned_to?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Client Automations ──────────────────────────────────────────────────────
+
+export type AutomationStatus = 'active' | 'paused' | 'error' | 'unknown';
+export type AutomationHealth = 'healthy' | 'degraded' | 'failing';
+
+export interface ClientAutomation {
+  id: string;
+  client_id: string;
+  ticket_id?: string | null;
+  platform: TicketType;
+  external_id?: string | null;
+  external_url?: string | null;
+  status: AutomationStatus;
+  last_checked?: string | null;
+  last_run?: string | null;
+  run_count: number;
+  error_count: number;
+  health: AutomationHealth;
+  created_at: string;
+  // Joined fields
+  company_name?: string;
+  project_name?: string;
+}
+
+// ── Client Reports ──────────────────────────────────────────────────────────
+
+export type ReportType = 'monthly' | 'quarterly' | 'incident';
+
+export interface ClientReport {
+  id: string;
+  client_id: string;
+  report_type: ReportType;
+  period_start?: string | null;
+  period_end?: string | null;
+  content?: string | null;
+  metrics?: Record<string, unknown> | null;
+  sent_at?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  // Joined fields
+  company_name?: string;
+}
+
+// ── AI Teammate Deployments ─────────────────────────────────────────────────
+
+export type TeammateType = 'rebecka' | 'daniel' | 'sarah' | 'andrew';
+export type TeammateStatus = 'active' | 'paused' | 'configuring';
+
+export interface TeammateDeployment {
+  id: string;
+  client_id: string;
+  teammate: TeammateType;
+  status: TeammateStatus;
+  config?: Record<string, unknown> | null;
+  deployed_at?: string | null;
+  last_active?: string | null;
+  created_at: string;
+  // Joined fields
+  company_name?: string;
+}

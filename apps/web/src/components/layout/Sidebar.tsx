@@ -23,6 +23,8 @@ import {
   User,
   Users,
   FileBarChart2,
+  Activity,
+  FileText,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
@@ -56,6 +58,8 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/dashboard/build-team', label: 'Build Team', icon: Bot },
       { href: '/dashboard/deploy', label: 'Deploy', icon: Rocket },
       { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
+      { href: '/dashboard/monitoring', label: 'Monitoring', icon: Activity },
+      { href: '/dashboard/reports', label: 'Reports', icon: FileText },
     ],
   },
   {
@@ -63,6 +67,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/dashboard/customers', label: 'Customers', icon: Users },
       { href: '/dashboard/opportunities', label: 'Opportunities', icon: FileBarChart2 },
+      { href: '/dashboard/teammates', label: 'AI Teammates', icon: Bot },
     ],
   },
   {
