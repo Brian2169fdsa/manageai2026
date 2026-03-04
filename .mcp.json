@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "n8n": {
+      "type": "url",
+      "url": "https://manageai2026.app.n8n.cloud/mcp-server/http"
+    }
+  }
+}
