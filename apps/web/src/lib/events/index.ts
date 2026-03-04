@@ -5,11 +5,18 @@ import { createClient } from '@supabase/supabase-js';
 
 export type EventType =
   | 'deal.closed'
+  | 'ticket.created'
   | 'ticket.submitted'
   | 'ticket.approved'
   | 'ticket.deployed'
+  | 'ticket.failed'
   | 'automation.error'
   | 'client.at_risk'
+  | 'client.churned'
+  | 'lead.qualified'
+  | 'report.ready'
+  | 'content.drafted'
+  | 'assessment.completed'
   | 'build.completed'
   | 'build.failed';
 

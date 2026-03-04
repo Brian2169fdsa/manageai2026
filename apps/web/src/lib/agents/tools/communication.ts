@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { AgentTool } from '../types';
 import * as slack from '@/lib/integrations/slack';
+import * as calendar from '@/lib/integrations/calendar';
 
 export const communicationTools: AgentTool[] = [
   {
@@ -152,7 +153,7 @@ export const communicationTools: AgentTool[] = [
 
   {
     name: 'createCalendarEvent',
-    description: 'Create a calendar event. Currently logs the intent and returns a mock confirmation.',
+    description: 'Create a Google Calendar event. If configured, the event is created via the Google Calendar API with attendee invites. Falls back to demo mode when credentials are not set.',
     input_schema: {
       type: 'object',
       properties: {
@@ -178,17 +179,44 @@ export const communicationTools: AgentTool[] = [
     },
     execute: async ({ title, date, attendees = [], description = '' }: any, _supabase: any) => {
       const start = Date.now();
-      console.log(`[tool:createCalendarEvent] NOT CONFIGURED — title="${title}", date=${date}`);
+      console.log(`[tool:createCalendarEvent] title="${title}", date=${date}, attendees=${attendees.length}`);
+
+      const result = await calendar.createEvent({
+        title,
+        startTime: date,
+        description,
+        attendees,
+      });
+
+      const duration_ms = Date.now() - start;
+
+      if (result.demo) {
+        console.log(`[tool:createCalendarEvent] DEMO MODE — calendar not configured`);
+        return {
+          success: true,
+          demo: true,
+          not_configured: true,
+          message: `Calendar event logged (demo mode — Google Calendar credentials not configured). Event: "${title}" on ${date} with ${attendees.length} attendee(s). Add GOOGLE_CALENDAR_CLIENT_ID, GOOGLE_CALENDAR_CLIENT_SECRET, and GOOGLE_CALENDAR_REFRESH_TOKEN to enable.`,
+          title,
+          date,
+          attendees,
+          duration_ms,
+        };
+      }
+
+      if (!result.success) {
+        return { success: false, error: result.error, duration_ms };
+      }
+
+      console.log(`[tool:createCalendarEvent] Created via Google Calendar in ${duration_ms}ms, id=${result.eventId}`);
       return {
-        success: false,
-        not_configured: true,
-        message: `Calendar event NOT created — calendar integration is not yet configured. To enable, add a Google Calendar or Microsoft Graph API key. Intended event: "${title}" on ${date} with ${attendees.length} attendee(s).`,
-        action_taken: false,
+        success: true,
+        eventId: result.eventId,
+        htmlLink: result.htmlLink,
         title,
         date,
         attendees,
-        description,
-        duration_ms: Date.now() - start,
+        duration_ms,
       };
     },
   },

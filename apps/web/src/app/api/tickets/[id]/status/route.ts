@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, statusChangedHtml } from '@/lib/email/notifications';
+import { publishEvent } from '@/lib/events';
 
 // Lazy-initialised so the module can be imported at build time without env vars
 function getSupabase() {
@@ -87,6 +88,22 @@ export async function PATCH(
         created_at: new Date().toISOString(),
       })
     );
+
+    // Publish agent event for key transitions (best-effort)
+    if (newStatus === 'DEPLOYED') {
+      publishEvent({
+        type: 'ticket.deployed',
+        payload: {
+          ticketId,
+          clientName: ticket.company_name ?? ticket.contact_name ?? 'Unknown',
+          platform: ticket.ticket_type ?? 'unknown',
+          projectName: ticket.project_name ?? '',
+        },
+        fromAgent: 'system',
+        toAgents: ['Delivery AI', 'Marketing AI', 'Executive AI'],
+        priority: 'normal',
+      }).catch((e: Error) => console.error('[status-route] publishEvent failed:', e.message));
+    }
 
     // Send status-changed email (best-effort)
     if (ticket.contact_email) {

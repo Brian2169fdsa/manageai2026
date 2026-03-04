@@ -78,4 +78,46 @@ export const EVENT_HANDLERS: Record<
         `Build approved for client ${e.payload.clientName} (ticket ${e.payload.ticketId}). Prepare delivery checklist for the upcoming deployment.`,
     },
   ],
+
+  'ticket.created': [
+    {
+      department: 'engineering',
+      agentName: 'Engineering AI',
+      generateReaction: (e) =>
+        `New ticket created: "${e.payload.projectName}" for ${e.payload.companyName}. Platform: ${e.payload.platform}. Check the build queue and assess capacity.`,
+    },
+  ],
+
+  'lead.qualified': [
+    {
+      department: 'sales',
+      agentName: 'Sales AI',
+      generateReaction: (e) =>
+        `New qualified lead: ${e.payload.companyName} (${e.payload.contactName}). Review the lead details and draft a personalized outreach message for Tony.`,
+    },
+    {
+      department: 'marketing',
+      agentName: 'Marketing AI',
+      generateReaction: (e) =>
+        `New lead arrived: ${e.payload.companyName} from ${e.payload.source ?? 'website form'}. Note this for content targeting and check if their industry matches any existing case studies.`,
+    },
+  ],
+
+  'report.ready': [
+    {
+      department: 'delivery',
+      agentName: 'Delivery AI',
+      generateReaction: (e) =>
+        `Monthly report ready for ${e.payload.clientName}. Report ID: ${e.payload.reportId}. Review the report for accuracy before Dan sends it to the client.`,
+    },
+  ],
+
+  'assessment.completed': [
+    {
+      department: 'sales',
+      agentName: 'Sales AI',
+      generateReaction: (e) =>
+        `Opportunity assessment completed for ${e.payload.companyName}. Assessment ID: ${e.payload.assessmentId}. Draft a follow-up email for Tony to send with the assessment attached.`,
+    },
+  ],
 };
