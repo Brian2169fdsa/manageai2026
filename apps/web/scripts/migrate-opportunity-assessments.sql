@@ -14,16 +14,22 @@ CREATE TABLE IF NOT EXISTS opportunity_assessments (
   transcript          TEXT,
   assessment          JSONB       NOT NULL DEFAULT '{}',
   html_content        TEXT,
+  blueprint_content   TEXT,
   status              TEXT        NOT NULL DEFAULT 'draft'
                                   CHECK (status IN ('draft', 'sent', 'converted')),
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Add blueprint_content if table already exists without it (idempotent)
+ALTER TABLE opportunity_assessments
+  ADD COLUMN IF NOT EXISTS blueprint_content TEXT;
+
 -- RLS (service role bypasses automatically; anon users get no access)
 ALTER TABLE opportunity_assessments ENABLE ROW LEVEL SECURITY;
 
--- Allow authenticated users in the same org to read
-CREATE POLICY IF NOT EXISTS "authenticated read"
+-- Allow authenticated users to read
+DROP POLICY IF EXISTS "authenticated read" ON opportunity_assessments;
+CREATE POLICY "authenticated read"
   ON opportunity_assessments
   FOR SELECT
   TO authenticated
