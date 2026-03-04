@@ -9,6 +9,8 @@ import {
   getZapierBuildPlanAddendum,
   getZapierDemoAddendum,
 } from '@/lib/platforms/zapier/prompt-builder';
+import { assembleBuildPlan, assembleSolutionDemo } from '@/lib/templates/assemble';
+import type { BuildPlanData, SolutionDemoData } from '@/lib/templates/data-schemas';
 
 // Allow up to 5 minutes — parallel Claude calls + optional MCP lookup
 export const maxDuration = 300;
@@ -342,194 +344,146 @@ Include 6-10 nodes with realistic parameters for the specific use case.${templat
       : `${ZAPIER_WORKFLOW_SYSTEM}\n${templateContextCapped}`;
 
   // ── 7. Run all 3 AI generations in parallel ──────────────────────────────
-  let buildPlanHtml: string;
-  let demoHtml: string;
+  let buildPlanHtml: string = '';
+  let demoHtml: string = '';
+  let buildPlanRaw: string = '{}';
+  let demoRaw: string = '{}';
   let workflowJson: string;
 
   try {
     const [buildPlanMsg, demoMsg, workflowMsg] = await Promise.all([
-      // ── Build Plan HTML ──────────────────────────────────────────────────
+      // ── Build Plan Data JSON ────────────────────────────────────────────
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
-        system: `You are a senior automation engineer at ManageAI creating a premium, interactive client-facing build manual.
+        system: `You are a senior automation engineer at ManageAI. Generate a structured JSON data object for a client build manual (Skillset Manual format).
 
-Generate a COMPLETE, self-contained HTML file that is a tabbed React application. Use React 18 via CDN with React.createElement (NO JSX). This must match ManageAI's Cornerstone design standard — polished enough to send directly to an enterprise client.
+Output ONLY a valid JSON object. First character must be {. Last character must be }. No markdown fences, no explanation text.
 
-=== MANDATORY STRUCTURE ===
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>[Project Name] — Build Plan | ManageAI</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'DM Sans', 'Helvetica Neue', sans-serif; background: #FFFFFF; color: #1A1A2E; line-height: 1.6; }
-    @keyframes slideIn { from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)} }
-    @keyframes floatUp { 0%{opacity:0;transform:translateY(0) scale(1)}10%{opacity:.15}90%{opacity:0}100%{opacity:0;transform:translateY(-800px) scale(0)} }
-    @keyframes pulseGlow { 0%,100%{box-shadow:0 0 15px rgba(74,143,214,.06)}50%{box-shadow:0 0 30px rgba(74,143,214,.18)} }
-    @keyframes pulseDot { 0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.4);opacity:1} }
-    :root { --accent:#4A8FD6; --accent-dim:rgba(74,143,214,0.07); --bg:#FFFFFF; --surface:#F8F9FB; --surface2:#F0F2F5; --border:#E2E5EA; --text:#1A1A2E; --text-dim:#8890A0; --text-mid:#5A6070; --success:#22A860; --warning:#E5A200; --danger:#E04848; --logo:#2A2A3E; --purple:#7C5CFC; --orange:#E8723A; --teal:#1AA8A8; --mono:'JetBrains Mono',monospace; }
-    .particle { position:fixed; border-radius:50%; pointer-events:none; animation:floatUp linear infinite; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script>
-    const e = React.createElement;
-    const { useState, useEffect, useRef } = React;
-    const C = { accent:'#4A8FD6', accentDim:'rgba(74,143,214,0.07)', bg:'#FFFFFF', surface:'#F8F9FB', surface2:'#F0F2F5', border:'#E2E5EA', text:'#1A1A2E', textDim:'#8890A0', textMid:'#5A6070', success:'#22A860', warning:'#E5A200', danger:'#E04848', logo:'#2A2A3E', purple:'#7C5CFC', orange:'#E8723A', teal:'#1AA8A8' };
-    // ... full React app using React.createElement ...
-    ReactDOM.createRoot(document.getElementById('root')).render(e(App, null));
-  </script>
-</body>
-</html>
+The JSON must match this exact schema:
+{
+  "clientName": "string — client company name",
+  "solutionName": "string — project/solution name",
+  "version": "string — e.g. '1.0'",
+  "stack": "string — e.g. 'Claude + Make.com' or 'GPT-4 + n8n'",
+  "confidentialLine": "string — e.g. 'Prepared for [Client Name]'",
+  "calloutTitle": "string — title for the key callout box on the overview tab",
+  "calloutBody": "string — 2-3 sentence explanation of the most important architectural decision",
+  "scopeIn": ["string array — 4-6 items that ARE in scope for this build"],
+  "scopeOut": ["string array — 3-5 items explicitly OUT of scope"],
+  "accounts": [{"name":"string","setup":"string — 1-2 sentence setup instructions","connection":"string — how it connects in the platform","icon":"emoji","color":"one of: C.purple, C.accent, C.teal, C.success, C.orange, C.warning, C.danger"}],
+  "spFolders": [{"content":"string — folder purpose","find":"string — where to find it","variable":"string — variable name","color":"one of: C.accent, C.purple, C.success, C.warning"}],
+  "trainingRows": [{"num":1,"name":"string — training/workflow name","type":"Workflow|Instructions|Knowledge","tools":"string — tools used","trigger":"string — what triggers it","inputs":"string — what goes in","outputs":"string — what comes out","typeColor":"one of: C.accent, C.teal, C.purple"}],
+  "scenarios": [{"id":"string — e.g. 'SC-01'","name":"string","trigger":"string","purpose":"string — 1-2 sentences","icon":"emoji","modules":6,"type":"auto|hitl","claude":true,"details":"string — 3-5 sentence detailed description","frMap":["FR references"],"moduleList":["string — each module in sequence"],"template":null}],
+  "systemPromptRules": [{"num":1,"title":"RULE TITLE","desc":"string — 2-3 sentence rule description","color":"one of: C.danger, C.warning, C.accent, C.success, C.purple, C.teal, C.textMid"}],
+  "jsonSchemas": [{"name":"string — schema name","fields":15,"used":"string — which scenario uses it","desc":"string — what it contains","arrays":["array field names"]}],
+  "makeVars": [{"name":"string — VARIABLE_NAME","purpose":"string","example":"string"}],
+  "conditionalLogic": [{"scenario":"string — scenario ID","condition":"string — if condition","action":"string — then action","elseAction":"string — else action","color":"one of: C.warning, C.orange, C.accent, C.purple, C.success, C.teal, C.danger"}],
+  "errorHandling": [{"trigger":"string — what goes wrong","response":"string — how to handle it","severity":"warning|danger"}],
+  "guardrails": ["string array — 4-6 non-negotiable safety rules"],
+  "operationalBP": [{"category":"string","icon":"emoji","color":"C.accent|C.purple|C.danger|C.warning","items":[{"label":"string — best practice title","detail":"string — 2-3 sentence explanation","type":"do|dont"}]}],
+  "buildBP": [{"category":"string","icon":"emoji","color":"C.purple|C.accent|C.teal|C.orange","items":[{"label":"string — best practice title","detail":"string — 2-3 sentence explanation","type":"do|dont"}]}]
+}
 
-=== TABS (6 required) ===
-1. Overview — KPI impact cards (time saved, steps automated, systems connected, complexity) + architecture flow diagram (flex row of labeled step boxes with → connectors) + key principles list
-2. Setup & Accounts — account cards for every required service (icon circle with colored bg, name, purpose, connection string in JetBrains Mono, setup notes)
-3. Build Steps — expandable accordion cards, one per workflow node/module. Each card: step number, node name, node type badge, expanded view shows: purpose, configuration parameters in monospace, data inputs/outputs, common issues
-4. Requirements — functional requirements table with columns: ID | Requirement | Maps To | Priority. Use FRxx IDs. Alternating row shading.
-5. Timeline — phased delivery bars with week ranges. Phase 1 (Setup), Phase 2 (Core Build), Phase 3 (Testing), Phase 4 (Go-Live). Each phase: color-coded bar, deliverables list, duration
-6. Go-Live — interactive checklist (clicking checks off items with green fill + strikethrough). Two sections: Pre-Launch Checklist + Open Questions. Track completion percentage with a progress bar.
-
-=== HEADER (required on every tab) ===
-Fixed header, background: linear-gradient(135deg,#F8F9FB,#FFFFFF), border-bottom: 1px solid #E2E5EA, padding 16px 32px, flex row:
-- Left: "MANAGE" (#2A2A3E, 700 weight) + "AI" (#4A8FD6, 700 weight) in 22px, vertical divider, client name + document type in 13px #8890A0
-- Center: tab buttons (active = #4A8FD6 bg white text rounded pill, inactive = transparent #8890A0)
-- Right: version badge + date
-
-=== BACKGROUND ===
-Behind content (not on header): subtle grid pattern — background-image: linear-gradient(#E2E5EA33 1px,transparent 1px),linear-gradient(90deg,#E2E5EA33 1px,transparent 1px); background-size:60px 60px
-12 floating particle divs: random sizes 4-10px, colors from palette at low opacity, random positions, floatUp animation with staggered delays 0-25s, duration 18-35s
-
-=== CARD PATTERNS ===
-KPI cards: padding 20px, borderRadius 12px, background #F8F9FB, border 1px solid #E2E5EA, textAlign center. Icon (28px emoji or SVG) on top, large number (28px, fontFamily JetBrains Mono, color #4A8FD6) middle, label (12px #8890A0) bottom. Hover: transform translateY(-2px), box-shadow 0 8px 24px rgba(0,0,0,.08)
-Expandable accordion: header row (step number circle in #4A8FD6, name, type badge, expand chevron). On click toggle expanded section with slideIn animation. Expanded: configuration block in JetBrains Mono on #1A1A2E bg, data mapping table
-Account cards: 40px icon circle with colored background, 13px font-weight 600 name, 11px #8890A0 description, monospace connection string in a pill
-Callout boxes (info/warning/success): 8% opacity background of the color, 22% opacity left border 3px, icon + title bold + description
-
-=== FOOTER ===
-Padding 24px 32px, border-top #E2E5EA, flex justify-between:
-- Left: "MANAGE" + "AI" branding (same as header, smaller)
-- Center: document name + version + generated date
-- Right: "CONFIDENTIAL — Prepared for [Client Name]"
-All text: 11px #8890A0
-
-=== CRITICAL RULES ===
-- Output ONLY the complete HTML. First character must be <!DOCTYPE html>
-- ALL content is specific to the ticket's client, project, and automation — no generic filler
-- Use React.createElement throughout, never JSX
-- Every section animates in with slideIn + staggered delay (style={{animation:'slideIn .4s ease both', animationDelay:'Xs'}})
-- JetBrains Mono for: IDs, parameters, connection strings, node types, code values
-- DM Sans for all other text
-- The Go-Live checklist must have real, specific checklist items derived from the project (not generic ones)
-- Build Steps must have one card per actual integration/node in the workflow (minimum 5)
-- Inline all styles — no external CSS files
-- Make it premium enough to impress an enterprise client`,
+REQUIREMENTS:
+- ALL content must be specific to this client's project. No generic filler.
+- Include 3-6 accounts, 3-5 spFolders, 3-5 trainingRows, 2-4 scenarios with 5-10 moduleList items each
+- Include 4-8 systemPromptRules, 1-3 jsonSchemas, 4-8 makeVars, 4-7 conditionalLogic items
+- Include 3-6 errorHandling items, 4-6 guardrails
+- Include 2-4 operationalBP categories with 3-4 items each, 2-4 buildBP categories with 3-5 items each
+- Color values must be exactly as shown (C.accent, C.purple, etc.) — they reference the template's color constants
+- The platform is ${ticket.ticket_type.toUpperCase()}`,
         messages: [
           {
             role: 'user',
-            content: `Generate the complete build plan for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierBuildPlanAddendum() : ticket.ticket_type === 'make' ? getMakeBuildPlanAddendum() : ''}`,
+            content: `Generate the build plan data JSON for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierBuildPlanAddendum() : ticket.ticket_type === 'make' ? getMakeBuildPlanAddendum() : ''}`,
           },
         ],
       }),
 
-      // ── Solution Demo HTML ───────────────────────────────────────────────
+      // ── Solution Demo Data JSON ─────────────────────────────────────────
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
-        system: `You are creating a premium interactive client demo at ManageAI showing an automation solution.
+        system: `You are creating structured data for a client solution demo at ManageAI. Generate a JSON data object that will populate an interactive demo template.
 
-Generate a COMPLETE, self-contained HTML file — a tabbed React application using React 18 via CDN with React.createElement (NO JSX). This matches ManageAI's Cornerstone design standard.
+Output ONLY a valid JSON object. First character must be {. Last character must be }. No markdown fences, no explanation text.
 
-=== MANDATORY STRUCTURE ===
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>[Project Name] — Solution Demo | ManageAI</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'DM Sans', 'Helvetica Neue', sans-serif; background: #FFFFFF; color: #1A1A2E; }
-    @keyframes slideIn { from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)} }
-    @keyframes floatUp { 0%{opacity:0;transform:translateY(0) scale(1)}10%{opacity:.15}90%{opacity:0}100%{opacity:0;transform:translateY(-800px) scale(0)} }
-    @keyframes countUp { from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)} }
-    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.5} }
-    @keyframes dataFlow { 0%{transform:translateX(-100%);opacity:0}50%{opacity:1}100%{transform:translateX(100%);opacity:0} }
-    :root { --accent:#4A8FD6; --surface:#F8F9FB; --border:#E2E5EA; --text:#1A1A2E; --text-dim:#8890A0; --success:#22A860; --purple:#7C5CFC; --orange:#E8723A; --teal:#1AA8A8; }
-    .particle { position:fixed; border-radius:50%; pointer-events:none; animation:floatUp linear infinite; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script>
-    const e = React.createElement;
-    const { useState, useEffect, useRef, useCallback } = React;
-    // ... full app ...
-    ReactDOM.createRoot(document.getElementById('root')).render(e(App, null));
-  </script>
-</body>
-</html>
+The JSON must match this exact schema:
+{
+  "clientName": "string — client company name",
+  "solutionName": "string — project/solution name",
+  "version": "string — e.g. '1.0'",
+  "stack": "string — e.g. 'Retell AI + Make.com + GPT-4.1'",
+  "confidentialLine": "string — e.g. 'Prepared for [Client Name]'",
+  "overviewTitle": "string — solution title for overview tab",
+  "overviewDesc": "string — 2-3 sentence description of what the solution does",
+  "calloutTitle": "string — title for the key feature callout box",
+  "calloutBody": "string — 2-3 sentence explanation of the most impressive capability",
+  "statsScenarios": "string — number of scenarios/workflows, e.g. '6'",
+  "statsTools": "string — number of tools/integrations, e.g. '4'",
+  "statsGptStages": "string — number of AI processing stages, e.g. '2'",
+  "retellAgentId": "string — placeholder agent ID or 'N/A'",
+  "retellFromNumber": "string — placeholder phone number or 'N/A'",
+  "retellVoiceEngine": "string — voice engine or 'N/A'",
+  "retellDashUrl": "string — dashboard URL or 'N/A'",
+  "sheetId": "string — placeholder Google Sheet ID or 'N/A'",
+  "sheetRange": "string — data range or 'N/A'",
+  "manifestTitle": "string — title for the data manifest/dashboard",
+  "manifestDate": "string — demo date, e.g. 'March 4, 2026'",
+  "tripData": [
+    {
+      "date": "string — date like '03/04/2026'",
+      "time": "string — time like '08:30 AM'",
+      "patient": "string — person/record name (use realistic names for the industry)",
+      "patPhone": "string — phone number",
+      "patEmail": "string — email",
+      "facility": "string — facility/company name",
+      "facPhone": "string — facility phone",
+      "pickup": "string — pickup address or source",
+      "dest": "string — destination",
+      "type": "string — record type/category",
+      "caStatus": "string — one of: confirmed, rescheduled, cancelled, voicemail, retry, pending",
+      "notes": "string — important notes",
+      "callResult": "string — result text or empty",
+      "callNotes": "string — detailed notes or empty",
+      "callTs": "string — timestamp or empty"
+    }
+  ],
+  "transcriptLines": [
+    {"speaker": "agent|facility|customer|system", "text": "string — realistic conversation line", "delay": 600}
+  ],
+  "scenarios": [
+    {
+      "id": "string — e.g. 'SC-01'",
+      "name": "string — scenario name",
+      "color": "string — one of: C.accent, C.purple, C.teal, C.danger, C.warning, C.textDim",
+      "trust": "string — trust score like '8/10'",
+      "build": "string — build complexity like '2/5'",
+      "trigger": "string — what triggers this scenario",
+      "scId": "string — scenario/workflow ID placeholder",
+      "desc": "string — 2-3 sentence description",
+      "modules": ["string — each module/step in sequence, e.g. 'Schedule → Run scenario (every 15 min)'"]
+    }
+  ],
+  "techStack": [
+    {"icon": "emoji", "name": "string — tool name", "role": "string — what it does", "color": "string — C.purple|C.accent|C.teal|C.success|C.orange"}
+  ]
+}
 
-=== TABS (6 required) ===
-1. Overview — Hero section: large headline ("Automating [X] for [Company]"), 1-sentence impact statement, 3 benefit pills. Below: 4 KPI impact cards (time saved per week, steps automated, error reduction %, ROI multiplier) in JetBrains Mono numbers. Then: "What This Does" paragraph.
-2. How It Works — Visual flow diagram: flex row of step cards connected by animated → arrows. Each step: colored numbered circle, emoji icon, step name (bold), 1-line description. Below: written explanation of the full flow in plain language. Steps must be specific to this automation.
-3. Live Demo — Interactive walkthrough. Shows a realistic simulation of the automation running:
-   • A "Run Demo" button that when clicked, animates through each step with status indicators (⏳→✅)
-   • Shows realistic sample data specific to the use case: if it's an email workflow, show a simulated email. If CRM, show a contact record. If Slack, show a message preview. Each step reveals its output.
-   • A "Reset" button to run again
-   • Progress bar showing automation completion
-4. Architecture — Tech stack section: cards for each integration (platform logo placeholder, name, purpose, connection type). Integration diagram showing data flow between systems. "What ManageAI Configures" vs "What You Provide" two-column table.
-5. ROI Calculator — Editable input fields: hours/week currently spent manually, team size, hourly rate, error rate. Calculated outputs animate as numbers change: time saved/week, cost saved/month, annual ROI, payback period. Show formula explanation. All numbers in JetBrains Mono with countUp animation when tab activates.
-6. Next Steps — Implementation timeline: horizontal phase bars (Week 1: Setup, Week 2-3: Build, Week 4: Testing, Week 5: Go-Live). What ManageAI delivers (checklist). What client provides (checklist). CTA button: "Schedule Kickoff Call" (blue, prominent).
-
-=== HEADER (same as build plan) ===
-Fixed header, gradient background, ManageAI branding, tab navigation, version + date.
-
-=== BACKGROUND ===
-Subtle grid + 10 floating particles.
-
-=== LIVE DEMO REQUIREMENTS ===
-The Live Demo tab must be genuinely interactive:
-- Show realistic data specific to THIS automation (not generic "Lorem ipsum")
-- If the workflow involves emails → show a styled email preview
-- If it involves CRM data → show a contact/deal card
-- If it involves Slack → show a Slack-style message bubble
-- Each automation step should light up sequentially with a 800ms delay between steps
-- Final state shows all steps green with a success message
-
-=== ROI CALCULATOR REQUIREMENTS ===
-- Input fields must be editable (React controlled state)
-- Default values must be realistic for the use case
-- Calculations update in real-time as user types
-- Animate the output numbers with a brief scale animation on change
-- Show the math: display formula text below each result
-
-=== CRITICAL RULES ===
-- Output ONLY the complete HTML. First character must be <!DOCTYPE html>
-- ALL content, data, steps, and examples are SPECIFIC to the client's automation — no generic examples
-- Use React.createElement throughout, never JSX
-- JetBrains Mono for: numbers, metrics, code values, IDs
-- DM Sans for all prose text
-- The demo simulation must use realistic data from the ticket context (company name, use case, systems)
-- Inline all styles
-- Mobile responsive (max-width 960px centered, single column on mobile)
-- Footer: ManageAI branding + "CONFIDENTIAL — Prepared for [Client Name]" + version`,
+REQUIREMENTS:
+- ALL mock data, scenarios, and transcript lines must be realistic for THIS specific project
+- Generate 8-14 tripData records with realistic names, addresses, and details for the client's industry
+- Generate 8-10 transcriptLines showing a realistic conversation relevant to the use case
+- Generate 3-6 scenarios with 4-7 modules each
+- Generate 4-6 techStack entries
+- For non-voice projects: still use the tripData structure but adapt field names contextually (patient→record, facility→destination, etc.)
+- Color values must be exactly as shown (C.accent, C.purple, etc.)
+- The platform is ${ticket.ticket_type.toUpperCase()}`,
         messages: [
           {
             role: 'user',
-            content: `Generate the interactive solution demo for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierDemoAddendum() : ticket.ticket_type === 'make' ? getMakeDemoAddendum() : ''}`,
+            content: `Generate the solution demo data JSON for:\n\n${context}${ticket.ticket_type === 'zapier' ? getZapierDemoAddendum() : ticket.ticket_type === 'make' ? getMakeDemoAddendum() : ''}`,
           },
         ],
       }),
@@ -552,15 +506,15 @@ The Live Demo tab must be genuinely interactive:
       }),
     ]);
 
-    buildPlanHtml =
+    buildPlanRaw =
       buildPlanMsg.content[0].type === 'text'
         ? buildPlanMsg.content[0].text
-        : '<html><body><p>Error generating build plan</p></body></html>';
+        : '{}';
 
-    demoHtml =
+    demoRaw =
       demoMsg.content[0].type === 'text'
         ? demoMsg.content[0].text
-        : '<html><body><p>Error generating demo</p></body></html>';
+        : '{}';
 
     workflowJson = workflowMsg.content[0].type === 'text' ? workflowMsg.content[0].text : '{}';
 
@@ -604,13 +558,93 @@ The Live Demo tab must be genuinely interactive:
     );
   }
 
-  // ── 8. Ensure HTML files have proper DOCTYPE wrapper ─────────────────────
-  if (!buildPlanHtml.trim().toLowerCase().startsWith('<!doctype') && !buildPlanHtml.trim().startsWith('<html')) {
-    buildPlanHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Build Plan — ${ticket.project_name || ticket.company_name}</title></head><body>${buildPlanHtml}</body></html>`;
+  // ── 8. Parse AI data JSON and assemble HTML from templates ───────────────
+  let buildPlanData: BuildPlanData | null = null;
+  let demoData: SolutionDemoData | null = null;
+
+  // Helper to clean raw JSON from Claude (strip fences, extract braces)
+  function cleanJson(raw: string): string {
+    let cleaned = raw.trim();
+    const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fence) cleaned = fence[1].trim();
+    const first = cleaned.indexOf('{');
+    const last = cleaned.lastIndexOf('}');
+    if (first !== -1 && last > first) cleaned = cleaned.slice(first, last + 1);
+    return cleaned;
   }
-  if (!demoHtml.trim().toLowerCase().startsWith('<!doctype') && !demoHtml.trim().startsWith('<html')) {
-    demoHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Solution Demo — ${ticket.project_name || ticket.company_name}</title></head><body>${demoHtml}</body></html>`;
+
+  // Parse build plan data
+  try {
+    buildPlanData = JSON.parse(cleanJson(buildPlanRaw)) as BuildPlanData;
+    console.log('[generate-build] Build plan data parsed successfully');
+  } catch (parseErr) {
+    console.warn('[generate-build] Build plan JSON parse failed, using fallback:', (parseErr as Error).message);
+    // Create minimal fallback data
+    buildPlanData = {
+      clientName: ticket.company_name || 'Client',
+      solutionName: ticket.project_name || 'Automation Project',
+      version: '1.0',
+      stack: ticket.ticket_type === 'make' ? 'Make.com' : ticket.ticket_type === 'zapier' ? 'Zapier' : 'n8n',
+      confidentialLine: `Prepared for ${ticket.company_name || 'Client'}`,
+      calloutTitle: 'Build Overview',
+      calloutBody: ticket.ai_understanding || ticket.what_to_build || 'Automation build specification.',
+      scopeIn: ['Process automation as described in the ticket'],
+      scopeOut: ['Items not specified in the original request'],
+      accounts: [],
+      spFolders: [],
+      trainingRows: [],
+      scenarios: [],
+      systemPromptRules: [],
+      jsonSchemas: [],
+      makeVars: [],
+      conditionalLogic: [],
+      errorHandling: [],
+      guardrails: [],
+      operationalBP: [],
+      buildBP: [],
+    };
   }
+
+  // Parse solution demo data
+  try {
+    demoData = JSON.parse(cleanJson(demoRaw)) as SolutionDemoData;
+    console.log('[generate-build] Solution demo data parsed successfully');
+  } catch (parseErr) {
+    console.warn('[generate-build] Solution demo JSON parse failed, using fallback:', (parseErr as Error).message);
+    demoData = {
+      clientName: ticket.company_name || 'Client',
+      solutionName: ticket.project_name || 'Automation Project',
+      version: '1.0',
+      stack: ticket.ticket_type === 'make' ? 'Make.com' : ticket.ticket_type === 'zapier' ? 'Zapier' : 'n8n',
+      confidentialLine: `Prepared for ${ticket.company_name || 'Client'}`,
+      overviewTitle: ticket.project_name || 'Automation Solution',
+      overviewDesc: ticket.ai_understanding || ticket.what_to_build || 'Automation solution demo.',
+      calloutTitle: 'Key Capability',
+      calloutBody: 'This solution automates key processes for improved efficiency.',
+      statsScenarios: '3',
+      statsTools: '3',
+      statsGptStages: '1',
+      retellAgentId: 'N/A',
+      retellFromNumber: 'N/A',
+      retellVoiceEngine: 'N/A',
+      retellDashUrl: 'N/A',
+      sheetId: 'N/A',
+      sheetRange: 'N/A',
+      manifestTitle: 'Dashboard',
+      manifestDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      tripData: [],
+      transcriptLines: [],
+      scenarios: [],
+      techStack: [],
+    };
+  }
+
+  // Assemble final HTML from templates + data
+  buildPlanHtml = assembleBuildPlan(buildPlanData);
+  demoHtml = assembleSolutionDemo(demoData);
+
+  console.log('[generate-build] Assembled build plan HTML:', buildPlanHtml.length, 'chars');
+  console.log('[generate-build] Assembled solution demo HTML:', demoHtml.length, 'chars');
 
   // Validate and clean workflow JSON
   let cleanWorkflowJson = workflowJson.trim();
@@ -677,15 +711,19 @@ The Live Demo tab must be genuinely interactive:
   const buildPlanPath = `${ticket_id}/artifacts/build-plan-${timestamp}.html`;
   const demoPath = `${ticket_id}/artifacts/solution-demo-${timestamp}.html`;
   const workflowPath = `${ticket_id}/artifacts/workflow-${timestamp}.json`;
+  const buildPlanDataPath = `${ticket_id}/artifacts/build-plan-data-${timestamp}.json`;
+  const demoDataPath = `${ticket_id}/artifacts/solution-demo-data-${timestamp}.json`;
 
-  console.log('[generate-build] Uploading 3 files to Supabase Storage...');
+  console.log('[generate-build] Uploading 5 files to Supabase Storage...');
   try {
     await Promise.all([
       uploadToStorage(buildPlanPath, buildPlanHtml, 'text/html; charset=utf-8'),
       uploadToStorage(demoPath, demoHtml, 'text/html; charset=utf-8'),
       uploadToStorage(workflowPath, cleanWorkflowJson, 'application/json'),
+      uploadToStorage(buildPlanDataPath, JSON.stringify(buildPlanData, null, 2), 'application/json'),
+      uploadToStorage(demoDataPath, JSON.stringify(demoData, null, 2), 'application/json'),
     ]);
-    console.log('[generate-build] All 3 files uploaded successfully');
+    console.log('[generate-build] All 5 files uploaded successfully');
   } catch (uploadErr) {
     console.error('[generate-build] Storage upload failed:', uploadErr);
     return NextResponse.json(
@@ -706,6 +744,18 @@ The Live Demo tab must be genuinely interactive:
         generated_at: new Date().toISOString(),
         chars: buildPlanHtml.length,
         template_matched: matchedTemplateName ?? null,
+        template_based: true,
+      },
+    },
+    {
+      ticket_id,
+      artifact_type: 'build_plan_data',
+      file_name: `build-plan-data-${timestamp}.json`,
+      file_path: buildPlanDataPath,
+      version: 1,
+      metadata: {
+        generated_at: new Date().toISOString(),
+        chars: JSON.stringify(buildPlanData).length,
       },
     },
     {
@@ -717,6 +767,18 @@ The Live Demo tab must be genuinely interactive:
       metadata: {
         generated_at: new Date().toISOString(),
         chars: demoHtml.length,
+        template_based: true,
+      },
+    },
+    {
+      ticket_id,
+      artifact_type: 'solution_demo_data',
+      file_name: `solution-demo-data-${timestamp}.json`,
+      file_path: demoDataPath,
+      version: 1,
+      metadata: {
+        generated_at: new Date().toISOString(),
+        chars: JSON.stringify(demoData).length,
       },
     },
     {
@@ -771,6 +833,34 @@ The Live Demo tab must be genuinely interactive:
       html,
       ticket_id,
     }).catch((e) => console.error('[generate-build] Email send failed:', e));
+  }
+
+  // ── 12. Fire webhook if configured (best-effort, non-blocking) ───────────
+  try {
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('settings')
+      .eq('id', ticket.org_id)
+      .single();
+
+    const webhookUrl = orgData?.settings?.webhook_url;
+    if (webhookUrl) {
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'build.complete',
+          ticket_id,
+          company_name: ticket.company_name,
+          project_name: ticket.project_name,
+          platform: ticket.ticket_type,
+          artifacts_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/artifacts/${ticket_id}`,
+        }),
+      }).catch((err) => console.error('[webhook] Failed:', err));
+      console.log('[generate-build] Webhook fired to:', webhookUrl);
+    }
+  } catch {
+    // Non-critical — don't fail the build
   }
 
   console.log('[generate-build] Done. Total time:', Date.now() - overallStart, 'ms');
